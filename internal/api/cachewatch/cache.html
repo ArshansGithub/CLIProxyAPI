@@ -1,0 +1,523 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cache watch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --ground: #131a22;
+  --panel: #1b242e;
+  --panel-2: #222d39;
+  --line: #2c3947;
+  --ink: #e6ebf1;
+  --ink-2: #a3afbd;
+  --ink-3: #6f7d8c;
+  --read: #3987e5;
+  --write: #d95926;
+  --good: #22b14c;
+  --warn: #fab219;
+  --serious: #ec835a;
+  --critical: #e05252;
+  --focus: #8fc1ff;
+  font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--ground); color: var(--ink); }
+body { padding: 28px clamp(16px, 4vw, 48px) 64px; max-width: 1440px; margin: 0 auto; }
+a { color: var(--focus); }
+button { font: inherit; color: var(--ink); background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover { background: #2a3745; }
+button:focus-visible, input:focus-visible, tr[tabindex]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+button.quiet { background: transparent; border-color: transparent; color: var(--ink-2); }
+button.quiet:hover { color: var(--ink); background: var(--panel-2); }
+button.danger { color: var(--critical); }
+input[type=password], input[type=text] { font: inherit; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; width: 100%; }
+label { color: var(--ink-2); }
+code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+h1 { font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+.muted { color: var(--ink-2); }
+.dim { color: var(--ink-3); }
+.hidden { display: none !important; }
+
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 24px; margin-bottom: 22px; }
+header.top .status { color: var(--ink-2); flex: 1 1 auto; }
+header.top .status b { color: var(--ink); font-weight: 500; }
+header.top .tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pulse { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 8px; vertical-align: 1px; }
+.pulse.stale { background: var(--warn); }
+.pulse.down { background: var(--critical); }
+
+.banner { border: 1px solid var(--line); border-left: 4px solid var(--warn); background: var(--panel); padding: 10px 14px; border-radius: 6px; margin-bottom: 18px; }
+.banner.bad { border-left-color: var(--critical); }
+
+section { margin-bottom: 30px; }
+.row-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.row-head .controls { display: flex; gap: 10px; align-items: center; color: var(--ink-2); }
+
+.table-wrap { overflow-x: auto; }
+table.sessions { width: 100%; border-collapse: collapse; }
+table.sessions th { text-align: left; font-weight: 500; color: var(--ink-3); padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.sessions td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+table.sessions tr.session { cursor: pointer; }
+table.sessions tr.session:hover td { background: var(--panel); }
+table.sessions tr.session.open td { background: var(--panel); border-bottom-color: transparent; }
+table.sessions tr.session.idle td { color: var(--ink-3); }
+table.sessions td.id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+table.sessions td.num { text-align: right; white-space: nowrap; }
+table.sessions th.num { text-align: right; }
+.tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; line-height: 18px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+.tag.hit { color: var(--good); border-color: rgba(34,177,76,.45); }
+.tag.miss { color: var(--warn); border-color: rgba(250,178,25,.5); }
+.tag.T0 { color: var(--serious); border-color: rgba(236,131,90,.5); }
+.tag.alert { color: var(--critical); border-color: rgba(224,82,82,.6); }
+.tag.probe { color: var(--read); border-color: rgba(57,135,229,.5); }
+
+/* warmth: what the last request read against the session's high-water mark */
+.warmth { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; min-width: 200px; }
+.warmth .bar { height: 10px; background: var(--panel-2); border-radius: 3px; position: relative; overflow: hidden; }
+.warmth .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--read); border-radius: 3px; }
+.warmth .bar i.lost { background: var(--serious); opacity: .55; }
+.warmth small { color: var(--ink-2); white-space: nowrap; }
+
+/* cache entry age against the pool TTL */
+.ttl { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; min-width: 150px; }
+.ttl .bar { height: 4px; background: var(--panel-2); border-radius: 2px; overflow: hidden; }
+.ttl .bar i { display: block; height: 100%; background: var(--good); }
+.ttl.late .bar i { background: var(--serious); }
+.ttl.soon .bar i { background: var(--warn); }
+.ttl small { white-space: nowrap; color: var(--ink-2); }
+.ttl.late small { color: var(--serious); }
+
+tr.detail td { padding: 0 0 22px; background: var(--panel); }
+.detail-inner { padding: 8px 14px 6px; border-left: 3px solid var(--read); margin: 0 10px; }
+.detail-inner .facts { display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--ink-2); margin-bottom: 12px; align-items: baseline; }
+.detail-inner .facts b { color: var(--ink); font-weight: 500; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 170px; }
+.chart .axis { stroke: var(--line); stroke-width: 1; }
+.chart .grid { stroke: var(--line); stroke-width: 1; stroke-dasharray: 2 4; }
+.chart .read-line { fill: none; stroke: var(--read); stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.chart .write-bar { fill: var(--write); }
+.chart .pt { fill: var(--ground); stroke: var(--read); stroke-width: 2; vector-effect: non-scaling-stroke; }
+.chart .pt.miss { stroke: var(--warn); }
+.chart .pt.T0 { stroke: var(--serious); }
+.chart text { fill: var(--ink-3); font-size: 11px; }
+.chart .hover { pointer-events: none; }
+.chart .hover line { stroke: var(--ink-3); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.legend { display: flex; gap: 18px; color: var(--ink-2); font-size: 12.5px; margin: 6px 0 2px; }
+.legend i { display: inline-block; width: 12px; height: 3px; background: var(--read); vertical-align: middle; margin-right: 6px; }
+.legend i.write { height: 8px; background: var(--write); }
+.tip { position: absolute; pointer-events: none; background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 12.5px; white-space: nowrap; transform: translate(-50%, -115%); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+table.rows { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.rows th, table.rows td { padding: 4px 8px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.rows th { color: var(--ink-3); font-weight: 500; position: sticky; top: 0; background: var(--panel); }
+table.rows th.left, table.rows td.left { text-align: left; }
+table.rows td.reason { color: var(--warn); }
+.rows-wrap { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; margin-top: 10px; }
+
+.two { display: grid; grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr); gap: 28px; }
+@media (max-width: 960px) { .two { grid-template-columns: 1fr; } }
+
+ol.events { list-style: none; margin: 0; padding: 0; }
+ol.events li { display: grid; grid-template-columns: 66px 78px 1fr; gap: 12px; padding: 9px 0 9px 10px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--line); align-items: start; }
+ol.events li.alert { border-left-color: var(--critical); }
+ol.events li.cold-read { border-left-color: var(--serious); }
+ol.events li.partial-miss { border-left-color: var(--warn); }
+ol.events .when { color: var(--ink-3); white-space: nowrap; }
+ol.events .who { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
+ol.events .who button { padding: 0; border: 0; background: none; color: var(--focus); font: inherit; cursor: pointer; }
+ol.events .what .lost { color: var(--ink-2); }
+.empty { color: var(--ink-3); padding: 14px 0; }
+
+ul.keep { list-style: none; margin: 0; padding: 0; }
+.keep li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.keep .k-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.keep .k-head code { color: var(--ink); }
+.keep .k-body { color: var(--ink-2); font-size: 13px; }
+.miss { color: var(--warn); }
+.error { color: var(--critical); }
+.hit { color: var(--good); }
+
+.gate { max-width: 440px; margin: 12vh auto 0; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; }
+.gate p { color: var(--ink-2); margin: 6px 0 16px; }
+.gate .err { color: var(--critical); margin: 10px 0 0; }
+.gate form { display: grid; gap: 10px; }
+
+footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1px solid var(--line); padding-top: 12px; max-width: 80ch; }
+@media (prefers-reduced-motion: no-preference) {
+  .pulse { animation: beat 2.4s ease-in-out infinite; }
+  @keyframes beat { 50% { opacity: .45; } }
+}
+</style>
+</head>
+<body>
+
+<div id="gate" class="gate hidden">
+  <h1>Cache watch</h1>
+  <p>Enter the proxy's management key. It stays in this browser only.</p>
+  <form id="gate-form">
+    <input id="gate-key" type="password" autocomplete="current-password" placeholder="Management key" aria-label="Management key">
+    <button type="submit">Open</button>
+  </form>
+  <div id="gate-err" class="err hidden"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <h1>Cache watch</h1>
+    <div class="status"><span id="pulse" class="pulse"></span><span id="headline">Connecting</span></div>
+    <div class="tools">
+      <label><input type="checkbox" id="show-idle"> show idle sessions</label>
+      <button id="copy-bundle" title="Copy a JSON snapshot of everything on this page, to paste into a Claude session">Copy diagnostic bundle</button>
+      <button id="reset" class="danger quiet">Reset stats</button>
+      <button id="logout" class="quiet">Change key</button>
+    </div>
+  </header>
+
+  <div id="banners"></div>
+
+  <section>
+    <div class="row-head">
+      <h2>Sessions</h2>
+      <div class="controls"><span id="session-count" class="dim"></span></div>
+    </div>
+    <div class="table-wrap">
+    <table class="sessions">
+      <thead><tr>
+        <th>Session</th><th>Model</th><th>Account</th><th>Pool</th><th>Last request</th>
+        <th style="min-width:160px">Cache entry age</th>
+        <th style="min-width:220px">Cached read vs high-water</th>
+        <th>Last result</th>
+        <th class="num">Hit / miss / cold</th><th class="num">Lost</th><th>Keepalive</th>
+      </tr></thead>
+      <tbody id="sessions"></tbody>
+    </table>
+    </div>
+    <div id="sessions-empty" class="empty hidden"></div>
+  </section>
+
+  <div class="two">
+    <section>
+      <div class="row-head">
+        <h2>What went cold, and why</h2>
+        <div class="controls"><span id="event-filter" class="hidden">Only <code id="event-filter-id"></code> <button class="quiet" id="event-filter-clear">show all</button></span></div>
+      </div>
+      <ol id="events" class="events"></ol>
+      <div id="events-empty" class="empty">No cache loss recorded yet. Cold reads after a session's first request, partial misses, and alert crossings will appear here with the reason the proxy can see.</div>
+    </section>
+    <section>
+      <h2>Keepalive probes</h2>
+      <div id="keepalive"></div>
+    </section>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+(() => {
+  const KEY = 'cpa-cache-watch-key';
+  const POLL_MS = 5000;
+  const LIVE_WINDOW_MS = 15 * 60 * 1000;
+  const state = {
+    key: null, stats: null, keepalive: null, versions: null,
+    events: [], latestSeq: 0, open: null, filterSession: null,
+    lastOk: 0, lastErr: null, serverVersion: '', showIdle: false, timer: null,
+    detail: {},
+  };
+  const $ = (id) => document.getElementById(id);
+
+  // ---- helpers -----------------------------------------------------------
+  const fmt = (n) => (n == null ? '–' : Number(n).toLocaleString('en-US'));
+  const fmtK = (n) => { n = Number(n) || 0; const a = Math.abs(n); if (a >= 1e6) return (n / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return (n / 1e3).toFixed(a >= 1e5 ? 0 : 1) + 'k'; return String(n); };
+  const dur = (ms) => { if (!(ms > 0)) ms = 0; const s = Math.round(ms / 1000); if (s < 60) return s + 's'; const m = Math.floor(s / 60); if (m < 60) return m + 'm ' + (s % 60) + 's'; const h = Math.floor(m / 60); if (h < 48) return h + 'h ' + (m % 60) + 'm'; return Math.floor(h / 24) + 'd'; };
+  const ago = (iso) => { const t = Date.parse(iso); return isNaN(t) ? '–' : dur(Date.now() - t) + ' ago'; };
+  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+  const shortAuth = (a) => { if (!a) return '–'; return a.replace(/^claude-/, '').replace(/\.json$/, '').replace(/@.*$/, ''); };
+  const shortModel = (m) => (m || '').replace(/^claude-/, '');
+  const ttlFor = (regime) => regime === '1h' ? 3600e3 : (regime === '5m' || regime === 'mixed') ? 300e3 : 0;
+
+  // ---- api ---------------------------------------------------------------
+  async function api(path, opts = {}) {
+    const res = await fetch(path, { ...opts, headers: { Authorization: 'Bearer ' + state.key, ...(opts.headers || {}) } });
+    const ver = res.headers.get('X-CPA-VERSION');
+    if (ver) state.serverVersion = ver + (res.headers.get('X-CPA-COMMIT') ? ' @ ' + res.headers.get('X-CPA-COMMIT') : '');
+    if (res.status === 401 || res.status === 403) { const err = new Error('unauthorized'); err.auth = true; try { err.detail = (await res.json()).error; } catch (_) {} throw err; }
+    if (!res.ok) { const err = new Error('HTTP ' + res.status); err.status = res.status; throw err; }
+    return res.json();
+  }
+
+  async function poll() {
+    try {
+      const [stats, keepalive, versions, events] = await Promise.all([
+        api('/v0/management/cache-stats'),
+        api('/v0/management/cache-keepalive').catch((e) => (e.status === 404 ? { enabled: false, sessions: [], counters: {} } : Promise.reject(e))),
+        api('/v0/management/claude-client-versions').catch(() => null),
+        api('/v0/management/cache-stats/events?after=' + state.latestSeq + '&limit=300').catch((e) => (e.status === 404 ? null : Promise.reject(e))),
+      ]);
+      state.stats = stats; state.keepalive = keepalive; state.versions = versions;
+      if (events) {
+        if (events.latest_seq < state.latestSeq) state.events = [];
+        state.events = state.events.concat(events.events || []);
+        if (state.events.length > 1000) state.events = state.events.slice(-1000);
+        state.latestSeq = Math.max(state.latestSeq, events.latest_seq || 0);
+      }
+      if (state.open) refreshDetail(state.open, true);
+      state.lastOk = Date.now(); state.lastErr = null;
+    } catch (e) {
+      if (e.auth) { showGate(e.detail || 'That key was rejected.'); return; }
+      state.lastErr = e.message || String(e);
+    }
+    render();
+    state.timer = setTimeout(poll, POLL_MS);
+  }
+
+  async function refreshDetail(id, quiet) {
+    try {
+      const data = await api('/v0/management/cache-stats/sessions/' + encodeURIComponent(id));
+      state.detail[id] = { fetchedAt: Date.now(), data };
+      if (!quiet) render();
+    } catch (e) { if (!quiet) { state.lastErr = e.message; render(); } }
+  }
+
+  // ---- gate and controls --------------------------------------------------
+  function showGate(msg) {
+    if (state.timer) clearTimeout(state.timer);
+    $('app').classList.add('hidden'); $('gate').classList.remove('hidden');
+    const err = $('gate-err');
+    if (msg) { err.textContent = msg; err.classList.remove('hidden'); } else err.classList.add('hidden');
+    $('gate-key').focus();
+  }
+  $('gate-form').addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    const k = $('gate-key').value.trim(); if (!k) return;
+    state.key = k; try { localStorage.setItem(KEY, k); } catch (_) {}
+    $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
+    state.latestSeq = 0; state.events = [];
+    poll();
+  });
+  $('logout').addEventListener('click', () => { try { localStorage.removeItem(KEY); } catch (_) {} state.key = null; showGate(); });
+  $('show-idle').addEventListener('change', (ev) => { state.showIdle = ev.target.checked; render(); });
+  $('event-filter-clear').addEventListener('click', () => { state.filterSession = null; render(); });
+  $('reset').addEventListener('click', async () => {
+    if (!confirm('Drop every retained session and event from the proxy\'s cache statistics?')) return;
+    try { await api('/v0/management/cache-stats', { method: 'DELETE' }); state.events = []; state.detail = {}; state.open = null; }
+    catch (e) { state.lastErr = e.message; render(); }
+  });
+  $('copy-bundle').addEventListener('click', async () => {
+    const bundle = {
+      captured_at: new Date().toISOString(), proxy_version: state.serverVersion,
+      cache_stats: state.stats, cache_keepalive: state.keepalive, claude_client_versions: state.versions,
+      events: state.events, open_session_detail: state.open ? (state.detail[state.open] || {}).data : null,
+    };
+    const text = JSON.stringify(bundle, null, 2);
+    try { await navigator.clipboard.writeText(text); $('copy-bundle').textContent = 'Copied'; }
+    catch (_) { window.prompt('Copy this bundle:', text); }
+    setTimeout(() => { $('copy-bundle').textContent = 'Copy diagnostic bundle'; }, 1600);
+  });
+
+  // ---- render ------------------------------------------------------------
+  function render() {
+    renderHeader(); renderBanners(); renderSessions(); renderEvents(); renderKeepalive();
+    $('foot').textContent = (state.serverVersion ? 'Proxy ' + state.serverVersion + '. ' : '') + 'Polls every 5 seconds. A session counts as live for 15 minutes after its last request. "Lost" is cached tokens a request could have read but did not; "cold" is a request that read nothing from cache.';
+  }
+
+  function renderHeader() {
+    const p = $('pulse'); const staleFor = Date.now() - state.lastOk;
+    p.className = 'pulse' + (state.lastErr ? ' down' : staleFor > POLL_MS * 3 ? ' stale' : '');
+    const s = state.stats; const g = s && s.global;
+    if (!s) { $('headline').textContent = state.lastErr ? 'Proxy unreachable: ' + state.lastErr : 'Connecting'; return; }
+    if (!s.enabled) { $('headline').innerHTML = 'Cache statistics are <b>off</b> on the proxy. Set <code>usage-cache-stats.enabled: true</code> in config.yaml.'; return; }
+    const live = (s.sessions || []).filter(isLive).length;
+    const rate = g.classified > 0 ? Math.round(g.hit_rate * 100) + '% hits' : 'no cache data yet';
+    const ka = state.keepalive && state.keepalive.enabled ? 'keepalive on' : 'keepalive off';
+    $('headline').innerHTML = `<b>${live}</b> live of ${s.sessions.length} sessions, <b>${rate}</b> over ${fmt(g.classified)} requests, ${fmtK(g.cache_read_tokens)} read and ${fmtK(g.cache_creation_tokens)} written to cache, <b>${fmtK(g.lost_tokens)}</b> lost, ${ka}`
+      + (state.lastErr ? ` <span class="error">(last poll failed: ${esc(state.lastErr)})</span>` : '');
+  }
+
+  function renderBanners() {
+    const out = [];
+    const v = state.versions;
+    if (v && (v.drift || v.drifted || v.drift_detected)) {
+      out.push(`<div class="banner">Claude Code client version drift detected. A pin that no longer matches the installed client re-dresses requests and can change the cached prefix. Check <code>/v0/management/claude-client-versions</code> and re-run <code>cpa-sync-claude-baseline</code>.</div>`);
+    }
+    const alerting = (state.stats && state.stats.sessions || []).filter((x) => x.alerting);
+    if (alerting.length) out.push(`<div class="banner bad">${alerting.length} session${alerting.length > 1 ? 's are' : ' is'} losing cached tokens faster than the alert threshold: ${alerting.map((x) => '<code>' + esc(x.short_id) + '</code>').join(', ')}.</div>`);
+    const kaMiss = state.keepalive && state.keepalive.counters && state.keepalive.counters.misses;
+    if (kaMiss) out.push(`<div class="banner">${kaMiss} keepalive probe${kaMiss > 1 ? 's' : ''} found the entry already gone. See the probe list.</div>`);
+    $('banners').innerHTML = out.join('');
+  }
+
+  function isLive(s) { const t = Date.parse(s.last_seen); return !isNaN(t) && Date.now() - t < LIVE_WINDOW_MS; }
+  function keepaliveFor(id) { return ((state.keepalive && state.keepalive.sessions) || []).find((k) => k.session_id === id) || null; }
+
+  function renderSessions() {
+    const tbody = $('sessions'); const s = state.stats; tbody.innerHTML = '';
+    if (!s) return;
+    let list = s.sessions || [];
+    const liveN = list.filter(isLive).length;
+    if (!state.showIdle) list = list.filter(isLive);
+    $('session-count').textContent = state.showIdle ? `${list.length} sessions, ${liveN} live` : `${list.length} live`;
+    const empty = $('sessions-empty');
+    if (!list.length) {
+      empty.textContent = s.sessions.length ? 'No session has made a request in the last 15 minutes. Tick "show idle sessions" to see older ones.' : 'No sessions recorded yet. Start a Claude Code session through the proxy and it appears here after its first response.';
+      empty.classList.remove('hidden'); return;
+    }
+    empty.classList.add('hidden');
+    for (const x of list) {
+      const live = isLive(x);
+      const lastAt = Date.parse(x.last_seen); const age = isNaN(lastAt) ? 0 : Date.now() - lastAt;
+      const ttl = ttlFor(x.regime);
+      let ttlCls = '', ttlText = 'nothing written', pct = 0;
+      if (ttl) {
+        pct = Math.min(100, age / ttl * 100);
+        if (age > ttl) { ttlCls = 'late'; ttlText = 'expired ' + dur(age - ttl) + ' ago'; }
+        else { ttlText = dur(ttl - age) + ' left'; if (ttl - age < ttl * 0.2) ttlCls = 'soon'; }
+      }
+      const maxR = x.max_cache_read_tokens || 0, lastR = x.last_cache_read_tokens || 0;
+      const readPct = maxR ? Math.round(lastR / maxR * 100) : 0;
+      const tier = x.last_tier || 'n/a';
+      const tierLabel = tier === 'T0' ? (x.last_t0_cause === 'first' ? 'first request' : x.last_t0_cause === 'rebind' ? 'cold, rebind' : 'cold, expired') : tier;
+      const ka = keepaliveFor(x.id);
+      let kaText = '–';
+      if (ka) {
+        if (ka.active && ka.next_probe_at) kaText = 'probe in ' + dur(Date.parse(ka.next_probe_at) - Date.now());
+        else if (ka.retired_reason) kaText = 'stopped: ' + esc(ka.retired_reason);
+        if (ka.last_probe) kaText += ` <span class="tag ${ka.last_probe.status === 'hit' ? 'hit' : ka.last_probe.status === 'miss' ? 'miss' : ''}">${esc(ka.last_probe.status)}</span>`;
+      }
+      const tr = el(`<tr class="session ${live ? '' : 'idle'} ${state.open === x.id ? 'open' : ''}" tabindex="0" data-id="${esc(x.id)}">
+        <td class="id" title="${esc(x.id)}">${esc(x.short_id)}${x.keyed_by !== 'session' ? ' <span class="dim" title="No session id in the request; grouped by API key and model">*</span>' : ''}${x.alerting ? ' <span class="tag alert">alert</span>' : ''}</td>
+        <td>${esc(shortModel(x.model))}</td>
+        <td title="${esc(x.auth_id)}">${esc(shortAuth(x.auth_id))}</td>
+        <td>${esc(x.regime || '–')}</td>
+        <td title="${esc(x.last_seen)}">${ago(x.last_seen)}${x.last_is_probe ? ' <span class="tag probe">probe</span>' : ''}</td>
+        <td><div class="ttl ${ttlCls}"><div class="bar"><i style="width:${pct}%"></i></div><small>${ttlText}</small></div></td>
+        <td><div class="warmth"><div class="bar"><i class="lost" style="width:100%"></i><i style="width:${readPct}%"></i></div><small>${fmtK(lastR)} of ${fmtK(maxR)}</small></div></td>
+        <td><span class="tag ${esc(tier)}">${esc(tierLabel)}</span>${x.last_miss_reason ? ` <span class="dim" title="upstream cache_miss_reason">${esc(x.last_miss_reason)}</span>` : ''}</td>
+        <td class="num">${fmt(x.hits)} / ${fmt(x.misses)} / ${fmt(x.t0s)}</td>
+        <td class="num" ${x.lost_tokens ? 'style="color:var(--serious)"' : ''}>${fmtK(x.lost_tokens)}</td>
+        <td>${kaText}</td>
+      </tr>`);
+      const toggle = () => { state.open = state.open === x.id ? null : x.id; if (state.open && !state.detail[x.id]) refreshDetail(x.id); render(); };
+      tr.addEventListener('click', toggle);
+      tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } });
+      tbody.appendChild(tr);
+      if (state.open === x.id) tbody.appendChild(renderDetail(x));
+    }
+  }
+
+  function renderDetail(x) {
+    const d = state.detail[x.id];
+    const tr = el(`<tr class="detail"><td colspan="11"><div class="detail-inner"></div></td></tr>`);
+    const box = tr.querySelector('.detail-inner');
+    if (!d) { box.innerHTML = '<div class="empty">Loading requests…</div>'; return tr; }
+    const rows = d.data.requests || []; const sum = d.data.session || x;
+    box.appendChild(el(`<div class="facts">
+      <span>session <b>${esc(x.id)}</b></span>
+      <span>first seen <b>${esc(clock(sum.first_seen))}</b></span>
+      <span>requests <b>${fmt(sum.requests)}</b>${sum.probes ? `, probes <b>${fmt(sum.probes)}</b>` : ''}</span>
+      <span>account changes <b>${fmt(sum.rebinds)}</b></span>
+      <span>written to 5m / 1h pool <b>${fmtK(sum.cache_creation_5m_tokens)} / ${fmtK(sum.cache_creation_1h_tokens)}</b></span>
+      <span>total read <b>${fmtK(sum.cache_read_tokens)}</b></span>
+      <span>lost <b>${fmtK(sum.lost_tokens)}</b></span>
+      <button class="quiet" data-act="filter">Show this session's events</button>
+    </div>`));
+    box.querySelector('[data-act=filter]').addEventListener('click', (ev) => { ev.stopPropagation(); state.filterSession = x.id; render(); $('events').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+    box.addEventListener('click', (ev) => ev.stopPropagation());
+    if (!rows.length) { box.appendChild(el('<div class="empty">No retained requests.</div>')); return tr; }
+    box.appendChild(el('<div class="legend"><span><i></i>cached tokens read</span><span><i class="write"></i>tokens written to cache</span></div>'));
+    box.appendChild(chart(rows));
+    const tbl = el(`<div class="rows-wrap"><table class="rows"><thead><tr><th>#</th><th class="left">Time</th><th class="left">Result</th><th>Read</th><th>Change</th><th>Written 5m</th><th>Written 1h</th><th>Input</th><th>Output</th><th class="left">Account</th><th class="left">Upstream reason</th></tr></thead><tbody></tbody></table></div>`);
+    const tb = tbl.querySelector('tbody');
+    for (const r of rows.slice().reverse()) {
+      const tierLabel = r.tier === 'T0' ? (r.t0_cause ? 'cold, ' + r.t0_cause : 'cold') : r.tier;
+      tb.appendChild(el(`<tr><td>${r.seq}</td><td class="left">${esc(clock(r.at))}</td><td class="left"><span class="tag ${esc(r.tier)}">${esc(tierLabel)}</span>${r.is_probe ? ' <span class="tag probe">probe</span>' : ''}${r.rebind ? ' <span class="tag">rebind</span>' : ''}</td><td>${fmt(r.cache_read_tokens)}</td><td style="color:${r.delta_read < 0 ? 'var(--serious)' : 'inherit'}">${r.delta_read > 0 ? '+' : ''}${fmt(r.delta_read)}</td><td>${fmt(r.cache_creation_5m_tokens)}</td><td>${fmt(r.cache_creation_1h_tokens)}</td><td>${fmt(r.input_tokens)}</td><td>${fmt(r.output_tokens)}</td><td class="left" title="${esc(r.auth_id)}">${esc(shortAuth(r.auth_id))}</td><td class="left reason">${esc(r.miss_reason || '')}${r.missed_tokens ? ' (' + fmt(r.missed_tokens) + ')' : ''}</td></tr>`));
+    }
+    box.appendChild(tbl);
+    return tr;
+  }
+
+  function chart(rows) {
+    const W = 900, H = 170, padL = 54, padR = 12, padT = 10, padB = 24;
+    const n = rows.length;
+    const maxY = Math.max(1, ...rows.map((r) => Math.max(r.cache_read_tokens || 0, r.cache_creation_tokens || 0)));
+    const x = (i) => padL + (n === 1 ? (W - padL - padR) / 2 : (i / (n - 1)) * (W - padL - padR));
+    const y = (v) => padT + (1 - v / maxY) * (H - padT - padB);
+    const ticks = [0, 0.5, 1].map((f) => Math.round(maxY * f));
+    let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Cached tokens read per request">`;
+    for (const t of ticks) svg += `<line class="grid" x1="${padL}" x2="${W - padR}" y1="${y(t)}" y2="${y(t)}"/><text x="${padL - 6}" y="${y(t) + 4}" text-anchor="end">${fmtK(t)}</text>`;
+    svg += `<line class="axis" x1="${padL}" x2="${W - padR}" y1="${y(0)}" y2="${y(0)}"/>`;
+    const bw = Math.max(2, Math.min(10, (W - padL - padR) / Math.max(n, 1) * 0.4));
+    rows.forEach((r, i) => { const v = r.cache_creation_tokens || 0; if (v > 0) svg += `<rect class="write-bar" x="${x(i) - bw / 2}" y="${y(v)}" width="${bw}" height="${Math.max(1, y(0) - y(v))}" rx="1"/>`; });
+    svg += `<polyline class="read-line" points="${rows.map((r, i) => x(i) + ',' + y(r.cache_read_tokens || 0)).join(' ')}"/>`;
+    rows.forEach((r, i) => { svg += `<circle class="pt ${esc(r.tier)}" cx="${x(i)}" cy="${y(r.cache_read_tokens || 0)}" r="4"/>`; });
+    svg += `<text x="${padL}" y="${H - 6}">#${rows[0].seq}</text><text x="${W - padR}" y="${H - 6}" text-anchor="end">#${rows[n - 1].seq}</text>`;
+    svg += `<g class="hover hidden"><line y1="${padT}" y2="${y(0)}"/></g></svg>`;
+    const wrap = el(`<div class="chart">${svg}</div>`);
+    const tip = el('<div class="tip hidden"></div>'); wrap.appendChild(tip);
+    const svgEl = wrap.querySelector('svg'); const hover = svgEl.querySelector('.hover'); const hline = hover.querySelector('line');
+    svgEl.addEventListener('mousemove', (ev) => {
+      const rect = svgEl.getBoundingClientRect(); const px = (ev.clientX - rect.left) / rect.width * W;
+      let best = 0, bd = Infinity; for (let i = 0; i < n; i++) { const d = Math.abs(x(i) - px); if (d < bd) { bd = d; best = i; } }
+      const r = rows[best]; hover.classList.remove('hidden'); hline.setAttribute('x1', x(best)); hline.setAttribute('x2', x(best));
+      tip.classList.remove('hidden'); tip.style.left = (x(best) / W * rect.width) + 'px'; tip.style.top = (y(r.cache_read_tokens || 0) / H * rect.height) + 'px';
+      tip.innerHTML = `#${r.seq} ${esc(clock(r.at))} <span class="tag ${esc(r.tier)}">${esc(r.tier)}</span><br>read ${fmt(r.cache_read_tokens)}, written ${fmt(r.cache_creation_tokens)}${r.miss_reason ? '<br>' + esc(r.miss_reason) : ''}`;
+    });
+    svgEl.addEventListener('mouseleave', () => { hover.classList.add('hidden'); tip.classList.add('hidden'); });
+    return wrap;
+  }
+
+  function renderEvents() {
+    const ol = $('events'); ol.innerHTML = '';
+    let list = state.events.slice().reverse();
+    const f = $('event-filter');
+    if (state.filterSession) { list = list.filter((e) => e.session_id === state.filterSession); f.classList.remove('hidden'); $('event-filter-id').textContent = state.filterSession.slice(0, 8); } else f.classList.add('hidden');
+    $('events-empty').classList.toggle('hidden', list.length > 0);
+    for (const e of list.slice(0, 200)) {
+      const kind = e.kind === 'cold-read' ? 'cold read' : e.kind === 'partial-miss' ? 'partial miss' : e.kind;
+      ol.appendChild(el(`<li class="${esc(e.kind)}">
+        <span class="when" title="${esc(e.at)}">${esc(clock(e.at))}</span>
+        <span class="who"><button type="button" data-id="${esc(e.session_id)}" title="${esc(e.session_id)}">${esc(e.short_id)}</button></span>
+        <span class="what"><b style="font-weight:500">${esc(kind)}</b>${e.is_probe ? ' <span class="tag probe">probe</span>' : ''} <span class="lost">${e.lost_tokens ? fmtK(e.lost_tokens) + ' tokens' : ''}${e.gap_seconds ? ', after ' + dur(e.gap_seconds * 1000) + ' idle' : ''}${e.model ? ', ' + esc(shortModel(e.model)) : ''}</span><br>${esc(e.cause)}</span>
+      </li>`));
+    }
+    ol.querySelectorAll('button[data-id]').forEach((b) => b.addEventListener('click', () => { state.filterSession = b.dataset.id; state.open = b.dataset.id; if (!state.detail[b.dataset.id]) refreshDetail(b.dataset.id); render(); }));
+  }
+
+  function renderKeepalive() {
+    const box = $('keepalive'); const k = state.keepalive;
+    if (!k) { box.innerHTML = ''; return; }
+    if (!k.enabled) { box.innerHTML = '<div class="empty">Keepalive is off. Enable <code>claude-code.cache-keepalive</code> in config.yaml to have the proxy re-touch cache entries while a subagent is still running.</div>'; return; }
+    const c = k.counters || {};
+    const skipped = Object.entries(c.skipped_by_reason || {}).map(([r, n]) => `${esc(r)} ${n}`).join(', ');
+    let html = `<div class="muted" style="margin-bottom:8px">Fires ${esc(k.before_expiry)} before expiry${k.probe_5m && k.probe_5m !== 'off' ? `, 5m pool ${esc(k.before_expiry_5m)} before (${esc(k.probe_5m)})` : ''}${k.only_when_agents_active ? ', only while an agent is running' : ''}. Scheduled ${c.scheduled || 0}, fired ${c.fired || 0}, <span class="hit">hits ${c.hits || 0}</span>, <span class="miss">misses ${c.misses || 0}</span>, <span class="error">errors ${c.errors || 0}</span>${skipped ? ', skipped: ' + skipped : ''}.</div><ul class="keep">`;
+    const sessions = (k.sessions || []).slice().sort((a, b) => (Number(b.active) - Number(a.active)) || (Date.parse(b.last_request_at || 0) - Date.parse(a.last_request_at || 0)));
+    if (!sessions.length) html += '<li class="empty">No session has qualified yet. A session qualifies once a confirmed Claude Code request carries a cache TTL the scheduler probes.</li>';
+    for (const s of sessions.slice(0, 30)) {
+      const lp = s.last_probe;
+      html += `<li><div class="k-head"><code>${esc((s.session_id || '').slice(0, 8))}</code><span class="dim">${esc(shortModel(s.model))}, ${esc(s.ttl_tier || s.ttl)}</span>${s.active ? `<span class="hit">next probe in ${s.next_probe_at ? dur(Date.parse(s.next_probe_at) - Date.now()) : '–'}</span>` : `<span class="dim">stopped: ${esc(s.retired_reason || '–')}</span>`}</div>
+        <div class="k-body">${s.probes_sent || 0} probes sent${lp ? `; last ${esc(clock(lp.at))} <span class="${esc(lp.status)}">${esc(lp.status)}</span>${lp.status === 'hit' || lp.status === 'miss' ? `, read ${fmt(lp.cache_read_input_tokens)}${lp.baseline_read_input_tokens ? ' of ' + fmt(lp.baseline_read_input_tokens) : ''}` : ''}${lp.skipped_reason ? ' (' + esc(lp.skipped_reason) + ')' : ''}${lp.diagnosis ? ', ' + esc(lp.diagnosis) : ''}${lp.error ? ', ' + esc(lp.error) : ''}` : ''}</div></li>`;
+    }
+    box.innerHTML = html + '</ul>';
+  }
+
+  // Relative times tick between polls without re-fetching.
+  setInterval(() => { if (state.stats && !$('app').classList.contains('hidden')) { renderSessions(); renderKeepalive(); } }, 1000);
+
+  // ---- boot --------------------------------------------------------------
+  try { state.key = localStorage.getItem(KEY); } catch (_) {}
+  if (state.key) { $('app').classList.remove('hidden'); poll(); } else showGate();
+})();
+</script>
+</body>
+</html>
