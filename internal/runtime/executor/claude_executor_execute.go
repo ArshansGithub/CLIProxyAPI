@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
@@ -25,6 +26,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	if claudeResponsesCompactionRequested(req, opts) {
 		return e.executeClaudeCompaction(ctx, auth, req, opts)
 	}
+	requestStartedAt := time.Now()
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 	upstreamModel := e.upstreamModel(baseModel)
 
@@ -453,6 +455,16 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	if responseFormat == sdktranslator.FormatOpenAIResponse {
 		out = helps.EnsureResponsesUsageDetails(out)
 	}
+	helps.ObserveClaudeCacheKeepalive(ctx, helps.ClaudeCacheKeepaliveObservation{
+		ConfirmedClaudeCode: confirmedClaudeCode,
+		AuthID:              authID,
+		AuthProvider:        e.Identifier(),
+		Model:               baseModel,
+		OriginalPayload:     originalPayload,
+		Headers:             incomingHeaders,
+		Metadata:            opts.Metadata,
+		StartedAt:           requestStartedAt,
+	})
 	resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
 	return resp, nil
 }
