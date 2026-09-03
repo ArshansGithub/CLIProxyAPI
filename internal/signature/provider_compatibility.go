@@ -202,7 +202,7 @@ func detectSignatureProviderForBlock(rawSignature string, blockKind SignatureBlo
 			}
 		case SignatureProviderSWE:
 			if strings.HasPrefix(unprefixed, "sealed.v1.") {
-				return SignatureProviderSWE
+				return signatureProviderDetection{provider: SignatureProviderSWE}
 			}
 		}
 		return unknownSignatureProviderDetection("")
@@ -217,7 +217,7 @@ func detectSignatureProviderForBlock(rawSignature string, blockKind SignatureBlo
 		return signatureProviderDetection{provider: SignatureProviderGeminiBypass}
 	}
 	if strings.HasPrefix(sig, "sealed.v1.") {
-		return SignatureProviderSWE
+		return signatureProviderDetection{provider: SignatureProviderSWE}
 	}
 	// Probes run from the strongest marker to the weakest:
 	//   1. GPT carries the literal "gAAAA" prefix, which pins both the version
