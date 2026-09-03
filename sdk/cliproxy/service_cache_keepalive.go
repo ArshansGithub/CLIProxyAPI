@@ -10,6 +10,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/keepalive"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/usage"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v7/sdk/translator"
 	log "github.com/sirupsen/logrus"
@@ -49,6 +50,9 @@ func (p cacheKeepaliveProber) Probe(ctx context.Context, probe keepalive.ProbeRe
 			keepalive.ProbeMetadataKey:             true,
 		},
 	}
+	// Mark the probe so retained cache statistics can tell it apart from client
+	// traffic; a probe that hits the cache is success, not a real request.
+	ctx = usage.WithProbeOrigin(ctx, usage.KeepaliveProbeOrigin)
 	resp, err := p.manager.Execute(ctx, []string{provider}, req, opts)
 	if err != nil {
 		return keepalive.ProbeResult{}, err

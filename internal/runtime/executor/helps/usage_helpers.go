@@ -40,6 +40,9 @@ type UsageReporter struct {
 	source              string
 	reasoning           string
 	serviceTier         string
+	claudeSessionID     string
+	requestMaxTokens    int64
+	probeOrigin         string
 	generate            bool
 	stream              bool
 	requestedAt         time.Time
@@ -106,6 +109,7 @@ func NewUsageReporter(ctx context.Context, provider, model string, auth *cliprox
 		authType:        resolveUsageAuthType(auth),
 		reasoning:       usage.ReasoningEffortFromContext(ctx),
 		serviceTier:     usage.ServiceTierFromContext(ctx),
+		probeOrigin:     usage.ProbeOriginFromContext(ctx),
 		generate:        usage.GenerateFromContext(ctx),
 		stream:          usage.StreamFromContext(ctx),
 	}
@@ -115,6 +119,22 @@ func NewUsageReporter(ctx context.Context, provider, model string, auth *cliprox
 		reporter.accessTokenHash = authAccessTokenSHA256(auth)
 	}
 	return reporter
+}
+
+// SetClaudeSessionID records the Claude Code agent session the request belongs to.
+func (r *UsageReporter) SetClaudeSessionID(sessionID string) {
+	if r == nil {
+		return
+	}
+	r.claudeSessionID = strings.TrimSpace(sessionID)
+}
+
+// SetRequestMaxTokens records the max_tokens the request body carried.
+func (r *UsageReporter) SetRequestMaxTokens(maxTokens int64) {
+	if r == nil || maxTokens <= 0 {
+		return
+	}
+	r.requestMaxTokens = maxTokens
 }
 
 // SetStream records whether the request was executed in streaming mode.
@@ -461,6 +481,11 @@ func (r *UsageReporter) buildRecordForModel(model string, detail usage.Detail, f
 		ReasoningEffort:     r.reasoning,
 		ServiceTier:         r.serviceTier,
 		ResponseServiceTier: strings.TrimSpace(detail.ResponseServiceTier),
+		ClaudeSessionID:     r.claudeSessionID,
+		CacheMissReason:     strings.TrimSpace(detail.CacheMissReason),
+		CacheMissedTokens:   detail.CacheMissedTokens,
+		RequestMaxTokens:    r.requestMaxTokens,
+		ProbeOrigin:         r.probeOrigin,
 		Generate:            usage.GenerateFlag(r.generate),
 		Stream:              r.stream,
 		RequestedAt:         r.requestedAt,
@@ -897,11 +922,14 @@ func ParseOpenAIStreamUsage(line []byte) (usage.Detail, bool) {
 }
 
 func ParseClaudeUsage(data []byte) usage.Detail {
-	usageNode := gjson.ParseBytes(data).Get("usage")
+	root := gjson.ParseBytes(data)
+	usageNode := root.Get("usage")
 	if !usageNode.Exists() {
 		return usage.Detail{}
 	}
-	return parseClaudeUsageNode(usageNode)
+	detail := parseClaudeUsageNode(usageNode)
+	detail.CacheMissReason, detail.CacheMissedTokens = claudeCacheDiagnosticsFromRoot(root)
+	return detail
 }
 
 func ParseClaudeStreamUsage(line []byte) (usage.Detail, bool) {
@@ -916,7 +944,9 @@ func ParseClaudeStreamUsage(line []byte) (usage.Detail, bool) {
 	if !usageNode.Exists() {
 		return usage.Detail{}, false
 	}
-	return parseClaudeUsageNode(usageNode), true
+	detail := parseClaudeUsageNode(usageNode)
+	detail.CacheMissReason, detail.CacheMissedTokens = claudeCacheDiagnosticsFromRoot(gjson.ParseBytes(payload))
+	return detail, true
 }
 
 func parseClaudeUsageNode(usageNode gjson.Result) usage.Detail {
@@ -951,6 +981,9 @@ func parseClaudeUsageNode(usageNode gjson.Result) usage.Detail {
 		CachedTokens:        cacheReadTokens,
 		CacheReadTokens:     cacheReadTokens,
 		CacheCreationTokens: cacheCreationTokens,
+		// The pool split is reported beside the total, and only by Anthropic.
+		CacheCreation5mTokens: usageNode.Get("cache_creation.ephemeral_5m_input_tokens").Int(),
+		CacheCreation1hTokens: usageNode.Get("cache_creation.ephemeral_1h_input_tokens").Int(),
 	}
 	if detail.CachedTokens == 0 {
 		detail.CachedTokens = detail.CacheCreationTokens

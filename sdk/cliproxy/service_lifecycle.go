@@ -135,6 +135,7 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 
 	s.applyCacheKeepaliveConfig(s.cfg)
+	s.applyCacheStatsConfig(s.cfg)
 
 	if homeEnabled {
 		s.startHomeSubscriber(ctx)

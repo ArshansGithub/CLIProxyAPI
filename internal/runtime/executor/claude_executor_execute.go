@@ -66,6 +66,8 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	if fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
 	}
+	reporter.SetClaudeSessionID(claudeSessionID)
+	reporter.SetRequestMaxTokens(helps.RequestMaxTokens(originalPayload, req.Payload))
 
 	continuityCtx := &helps.ClaudeContinuityContext{}
 	ctx = helps.WithClaudeContinuityContext(ctx, continuityCtx)
@@ -394,8 +396,18 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		}
 		lines := bytes.Split(data, []byte("\n"))
 		var streamUsage helps.StreamUsageBuffer
+		// message_start carries the 5m/1h cache_creation split and the
+		// cache_miss_reason diagnostics; message_delta carries the totals. Carry
+		// the annotation forward onto every detail before it enters the buffer so
+		// upstream's aggregated trailing usage chunk still reports both.
+		var cacheAnnotation helps.ClaudeCacheAnnotation
 		for i, line := range lines {
-			streamUsage.ObserveClaudeStream(line)
+			if annotation, ok := helps.ParseClaudeCacheAnnotation(line); ok {
+				cacheAnnotation = annotation
+			}
+			if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
+				helps.ObserveMergedStreamUsage(&streamUsage, cacheAnnotation.Apply(detail))
+			}
 			restoredLine, errRestore := restoreClaudeOAuthToolNamesFromStreamLine(line, oauthToolNamesReverseMap)
 			if errRestore != nil {
 				errRestore = fmt.Errorf("restore Claude OAuth tool name from streaming response: %w", errRestore)
