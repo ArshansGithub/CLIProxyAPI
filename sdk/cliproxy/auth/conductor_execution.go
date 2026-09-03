@@ -1013,6 +1013,9 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 			continue
 		}
 		execReq := sanitizeDownstreamWebsocketFallbackRequest(execCtx, auth, req)
+		if selection != nil && !restoreExecutionModel {
+			execReq = attachResolvedHomeModelInfo(execReq, selection.modelInfo)
+		}
 		streamExecutionModel := ""
 		if restoreExecutionModel {
 			streamExecutionModel = executionModel
