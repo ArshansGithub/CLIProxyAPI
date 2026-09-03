@@ -101,6 +101,8 @@ type Config struct {
 	PerSessionRequests int
 	IdleTTL            time.Duration
 	Alert              AlertConfig
+	// MaxEvents bounds the retained cache-loss event ring. Default 1000.
+	MaxEvents int
 }
 
 // AlertConfig configures the sustained-loss alert.
@@ -242,6 +244,16 @@ type SessionSummary struct {
 	Alerting bool `json:"alerting"`
 	// LostTokensInWindow is the loss inside the current sliding alert window.
 	LostTokensInWindow int64 `json:"lost_tokens_in_window"`
+	// The state of the most recent request, so a live view needs no per-session
+	// fetch: what it read, the session high-water mark, how it was classified
+	// and why, and how long the session had been idle before it.
+	LastCacheReadTokens int64   `json:"last_cache_read_tokens"`
+	MaxCacheReadTokens  int64   `json:"max_cache_read_tokens"`
+	LastTier            Tier    `json:"last_tier"`
+	LastT0Cause         T0Cause `json:"last_t0_cause,omitempty"`
+	LastMissReason      string  `json:"last_miss_reason,omitempty"`
+	LastGapSeconds      float64 `json:"last_gap_seconds"`
+	LastIsProbe         bool    `json:"last_is_probe"`
 }
 
 // SessionDetail pairs a session summary with its retained request sequence.
@@ -275,8 +287,14 @@ type session struct {
 	// prevRead is the cache_read of the immediately preceding request, which is
 	// not necessarily retained once the ring buffer wraps.
 	prevRead int64
-	agg      Aggregate
-	requests []Request
+	// prevAt is the timestamp of the immediately preceding request.
+	prevAt      time.Time
+	lastTier    Tier
+	lastT0Cause T0Cause
+	lastGap     time.Duration
+	lastProbe   bool
+	agg         Aggregate
+	requests    []Request
 }
 
 // Store holds the bounded per-session statistics.
@@ -287,6 +305,9 @@ type Store struct {
 	// against it rather than wall time so retention tracks actual traffic.
 	clock    time.Time
 	sessions map[string]*session
+	// events is the bounded ring of cache-loss events across every session.
+	events   []Event
+	eventSeq int64
 }
 
 // NewStore builds a store with the supplied bounds.
@@ -319,6 +340,7 @@ func (s *Store) ApplyConfig(cfg Config) {
 	s.cfg = cfg
 	if !cfg.Enabled {
 		s.sessions = make(map[string]*session)
+		s.events = nil
 		return
 	}
 	for _, entry := range s.sessions {
@@ -371,6 +393,11 @@ func (s *Store) Record(observation Observation) {
 	}
 
 	entry.seq++
+	prevAuthID := entry.authID
+	var gap time.Duration
+	if entry.seq > 1 && !entry.prevAt.IsZero() && at.After(entry.prevAt) {
+		gap = at.Sub(entry.prevAt)
+	}
 	signal := observation.Signal
 	if signal == "" {
 		signal = SignalNone
@@ -428,6 +455,14 @@ func (s *Store) Record(observation Observation) {
 		T0Cause:               t0Cause,
 	}
 
+	var lost int64
+	if tier == TierMiss {
+		lost = entry.maxRead - observation.CacheReadTokens
+	}
+	if event, ok := entry.lossEvent(request, tier, t0Cause, prevAuthID, gap, lost); ok {
+		s.appendEventLocked(event)
+	}
+
 	entry.agg.Requests++
 	switch tier {
 	case TierNA:
@@ -444,7 +479,7 @@ func (s *Store) Record(observation Observation) {
 	case TierMiss:
 		entry.agg.Classified++
 		entry.agg.Misses++
-		if lost := entry.maxRead - observation.CacheReadTokens; lost > 0 {
+		if lost > 0 {
 			entry.agg.LostTokens += lost
 			entry.observeLoss(at, lost)
 		}
@@ -470,6 +505,11 @@ func (s *Store) Record(observation Observation) {
 		entry.maxRead = observation.CacheReadTokens
 	}
 	entry.prevRead = observation.CacheReadTokens
+	entry.prevAt = at
+	entry.lastTier = tier
+	entry.lastT0Cause = t0Cause
+	entry.lastGap = gap
+	entry.lastProbe = observation.IsProbe
 	entry.last = at
 	if entry.first.IsZero() || at.Before(entry.first) {
 		entry.first = at
@@ -490,7 +530,11 @@ func (s *Store) Record(observation Observation) {
 	if request.MissReason != "" {
 		entry.lastReason = request.MissReason
 	}
+	wasAlerting := entry.alerting
 	entry.evaluateAlert(at, s.cfg.Alert)
+	if entry.alerting && !wasAlerting {
+		s.appendEventLocked(entry.alertEvent(request))
+	}
 
 	entry.requests = append(entry.requests, request)
 	entry.trim(s.cfg.PerSessionRequests)
@@ -724,6 +768,7 @@ func (s *Store) Reset() int {
 	defer s.mu.Unlock()
 	cleared := len(s.sessions)
 	s.sessions = make(map[string]*session)
+	s.events = nil
 	s.clock = time.Time{}
 	return cleared
 }
@@ -743,17 +788,95 @@ func (e *session) summary() SessionSummary {
 		signal = SignalNone
 	}
 	return SessionSummary{
-		ID:                 e.id,
-		ShortID:            shortIDOf(e.id),
-		KeyedBy:            keyedBy,
-		Provider:           e.provider,
-		Model:              e.model,
-		AuthID:             e.authID,
-		Signal:             signal,
-		Aggregate:          agg,
-		Regime:             regimeFor(agg.CacheCreation5mTokens, agg.CacheCreation1hTokens),
-		Alerting:           e.alerting,
-		LostTokensInWindow: e.lossSum,
+		ID:                  e.id,
+		ShortID:             shortIDOf(e.id),
+		KeyedBy:             keyedBy,
+		Provider:            e.provider,
+		Model:               e.model,
+		AuthID:              e.authID,
+		Signal:              signal,
+		Aggregate:           agg,
+		Regime:              regimeFor(agg.CacheCreation5mTokens, agg.CacheCreation1hTokens),
+		Alerting:            e.alerting,
+		LostTokensInWindow:  e.lossSum,
+		LastCacheReadTokens: e.prevRead,
+		MaxCacheReadTokens:  e.maxRead,
+		LastTier:            e.lastTier,
+		LastT0Cause:         e.lastT0Cause,
+		LastMissReason:      e.lastReason,
+		LastGapSeconds:      e.lastGap.Seconds(),
+		LastIsProbe:         e.lastProbe,
+	}
+}
+
+// lossEvent builds the event a classified request produces, if any. It runs
+// before the request's counters are folded into the session, so maxRead and
+// prevRead still describe the state the request was judged against.
+func (e *session) lossEvent(request Request, tier Tier, t0Cause T0Cause, prevAuthID string, gap time.Duration, lost int64) (Event, bool) {
+	var kind EventKind
+	switch {
+	case tier == TierT0 && t0Cause != T0CauseFirst:
+		kind = EventColdRead
+	case tier == TierMiss:
+		kind = EventPartialMiss
+	default:
+		return Event{}, false
+	}
+	event := e.baseEvent(request, gap)
+	event.Kind = kind
+	event.PrevAuthID = prevAuthID
+	event.T0Cause = t0Cause
+	event.LostTokens = lost
+	if kind == EventColdRead {
+		event.LostTokens = e.maxRead
+	}
+	event.Cause = describeCause(event)
+	return event, true
+}
+
+// alertEvent records the sustained-loss alert crossing its threshold.
+func (e *session) alertEvent(request Request) Event {
+	event := e.baseEvent(request, e.lastGap)
+	event.Kind = EventAlert
+	event.LostTokens = e.lossSum
+	event.Cause = describeCause(event)
+	return event
+}
+
+func (e *session) baseEvent(request Request, gap time.Duration) Event {
+	keyedBy := e.keyedBy
+	if keyedBy == "" {
+		keyedBy = KeyedBySession
+	}
+	provider := request.Provider
+	if provider == "" {
+		provider = e.provider
+	}
+	model := request.Model
+	if model == "" {
+		model = e.model
+	}
+	authID := request.AuthID
+	if authID == "" {
+		authID = e.authID
+	}
+	return Event{
+		At:              request.At,
+		SessionID:       e.id,
+		ShortID:         shortIDOf(e.id),
+		KeyedBy:         keyedBy,
+		Provider:        provider,
+		Model:           model,
+		AuthID:          authID,
+		RequestSeq:      request.Seq,
+		CacheReadTokens: request.CacheReadTokens,
+		PrevReadTokens:  e.prevRead,
+		MaxReadTokens:   e.maxRead,
+		MissReason:      request.MissReason,
+		MissedTokens:    request.MissedTokens,
+		GapSeconds:      gap.Seconds(),
+		Regime:          regimeFor(e.agg.CacheCreation5mTokens+request.CacheCreation5mTokens, e.agg.CacheCreation1hTokens+request.CacheCreation1hTokens),
+		IsProbe:         request.IsProbe,
 	}
 }
 
