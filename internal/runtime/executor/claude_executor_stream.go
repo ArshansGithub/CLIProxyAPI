@@ -76,6 +76,8 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	if fp.ProfileClaudeCodeCLI {
 		claudeSessionID = helps.ClaudeAgentSessionUUIDForRequest(incomingHeaders, originalPayload, req.Payload, confirmedClaudeCode, opts.Metadata, req.Metadata)
 	}
+	reporter.SetClaudeSessionID(claudeSessionID)
+	reporter.SetRequestMaxTokens(helps.RequestMaxTokens(originalPayload, req.Payload))
 
 	continuityCtx := &helps.ClaudeContinuityContext{}
 	ctx = helps.WithClaudeContinuityContext(ctx, continuityCtx)
@@ -382,6 +384,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			var upstreamMessageID string
 			var upstreamStreamErr error
 			upstreamCompleted := false
+			var cacheAnnotation helps.ClaudeCacheAnnotation
 			flushEvent := func() bool {
 				if event.Len() == 0 {
 					return true
@@ -400,7 +403,12 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 				line := scanner.Bytes()
 				helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 				reporter.ObserveResponseModel(line)
-				streamUsage.ObserveClaudeStream(line)
+				if annotation, ok := helps.ParseClaudeCacheAnnotation(line); ok {
+					cacheAnnotation = annotation
+				}
+				if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
+					helps.ObserveMergedStreamUsage(&streamUsage, cacheAnnotation.Apply(detail))
+				}
 				restoredLine, errRestore := restoreClaudeOAuthToolNamesFromStreamLine(line, oauthToolNamesReverseMap)
 				if errRestore != nil {
 					emitResponseError(fmt.Errorf("restore Claude OAuth tool name from streaming response: %w", errRestore))
@@ -461,6 +469,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		var upstreamStreamErr error
 		var eventBuf bytes.Buffer
 		upstreamCompleted := false
+		var cacheAnnotation helps.ClaudeCacheAnnotation
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			eventBuf.Write(line)
@@ -471,7 +480,12 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			}
 			helps.AppendAPIResponseChunk(ctx, e.cfg, line)
 			reporter.ObserveResponseModel(line)
-			streamUsage.ObserveClaudeStream(line)
+			if annotation, ok := helps.ParseClaudeCacheAnnotation(line); ok {
+				cacheAnnotation = annotation
+			}
+			if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
+				helps.ObserveMergedStreamUsage(&streamUsage, cacheAnnotation.Apply(detail))
+			}
 			restoredLine, errRestore := restoreClaudeOAuthToolNamesFromStreamLine(line, oauthToolNamesReverseMap)
 			if errRestore != nil {
 				emitResponseError(fmt.Errorf("restore Claude OAuth tool name from streaming response: %w", errRestore))
