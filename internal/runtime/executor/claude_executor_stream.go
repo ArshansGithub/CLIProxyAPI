@@ -126,6 +126,11 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	// cloaked and confirmedClaudeCode are mutually exclusive: resolveClaudeWirePolicy
 	// forces Cloak off for a confirmed native client.
 	cpaOwnsCacheControl := shouldEnsureCacheControl(body, cloaked, confirmedClaudeCode)
+	// Normalize bare-string message content to block form before breakpoint
+	// placement so the rolling breakpoint's own wrapping cannot change the byte
+	// shape of an earlier message between consecutive requests
+	// (see claude_executor_content_shape.go).
+	body = normalizeClaudeMessageContentShape(body, cpaOwnsCacheControl)
 	if cpaOwnsCacheControl {
 		body = ensureCacheControl(body)
 	}
