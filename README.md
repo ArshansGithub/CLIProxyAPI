@@ -299,3 +299,69 @@ This is a tool built with Tauri 2 + Vue 3 for managing multiple OpenAI Codex des
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Build from source
+
+This fork's `feat/claude-code-cache-tooling` branch carries all five parts of the prompt-cache investigation as one testable set. Build it with the same ldflags the release workflow uses:
+
+```bash
+git clone https://github.com/ArshansGithub/CLIProxyAPI.git
+cd CLIProxyAPI
+git checkout feat/claude-code-cache-tooling
+
+go build \
+  -ldflags="-s -w -X main.Version=7.2.145-cache-tooling -X main.Commit=a08825d4" \
+  -o cliproxyapi-patched ./cmd/server
+
+./cliproxyapi-patched --version
+# CLIProxyAPI Version: 7.2.145-cache-tooling, Commit: a08825d4, BuiltAt: ...
+```
+
+Go 1.26 or newer (see `go.mod`). `go build ./... && go vet ./... && go test ./...` is green on the branch.
+
+### Config keys added by this branch
+
+Parts 1 and 3 add no config. Part 3 changes only how the existing `claude-header-defaults.user-agent` pin is compared, from an equality lock to a floor.
+
+```yaml
+# Part 2 - per-provider: send tool-bearing requests non-streamed upstream and
+# re-emit the reply as downstream SSE. Fixes empty tool arguments from
+# Cloudflare Workers AI and similar OpenAI-compatible gateways.
+openai-compatibility:
+  - name: cloudflare
+    non-stream-tool-calls: true
+
+# Part 4 - agent-aware prompt-cache keepalive. Opt-in, off by default.
+# Only 1h-ttl requests from a confirmed Claude Code client are ever probed.
+claude-code:
+  cache-keepalive:
+    enabled: false
+    before-expiry: 5m            # fire at request start + ttl - this
+    only-when-agents-active: true
+    liveness: claude-code-tasks  # or: always
+    agent-idle-window: 10m
+    max-probes: 6                # consecutive probes before the session retires
+    max-tokens: 1
+
+# Part 5 - retained per-session prompt-cache statistics. Opt-in, memory only.
+usage-cache-stats:
+  enabled: false
+  max-sessions: 500
+  per-session-requests: 200
+  idle-ttl: 24h
+  alert:
+    enabled: false
+    lost-tokens-per-hour: 500000
+```
+
+### Management routes added
+
+```
+GET    /v0/management/claude-client-versions          # Part 3
+GET    /v0/management/cache-keepalive                 # Part 4
+GET    /v0/management/cache-stats[?provider=]         # Part 5
+GET    /v0/management/cache-stats/sessions/*id        # Part 5
+DELETE /v0/management/cache-stats                     # Part 5
+```
+
+Part 5 also adds a **Cache** tab to the terminal UI, reachable with `./cliproxyapi-patched -tui`.
