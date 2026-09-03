@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/api/cachewatch"
 	"net/http"
 	"os"
 	"strings"
@@ -100,6 +101,7 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/cache-stats", s.mgmt.GetCacheStats)
 		// A fallback session key embeds the model name, which can contain
 		// slashes, so the id is matched as a catch-all rather than one segment.
+		mgmt.GET("/cache-stats/events", s.mgmt.GetCacheStatsEvents)
 		mgmt.GET("/cache-stats/sessions/*id", s.mgmt.GetCacheStatsSession)
 		mgmt.DELETE("/cache-stats", s.mgmt.DeleteCacheStats)
 
@@ -327,4 +329,17 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 	}
 
 	c.File(filePath)
+}
+
+// serveCacheWatchPage serves the embedded prompt-cache watch page. It is gated
+// exactly like the management control panel: hidden in home mode and when the
+// panel is disabled, since it is only useful with management routes enabled.
+func (s *Server) serveCacheWatchPage(c *gin.Context) {
+	cfg := s.cfg
+	if cfg == nil || cfg.Home.Enabled || cfg.RemoteManagement.DisableControlPanel {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", cachewatch.HTML())
 }
