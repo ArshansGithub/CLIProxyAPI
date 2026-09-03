@@ -347,6 +347,9 @@ func parseCodexWebSearchResultCacheTTL(raw string) (time.Duration, error) {
 type ClaudeCodeConfig struct {
 	// DisableCloakingModelList disables model ID cloaking in Anthropic model list responses.
 	DisableCloakingModelList bool `yaml:"disable-cloaking-model-list" json:"disable-cloaking-model-list"`
+
+	// CacheKeepalive configures agent-aware prompt-cache keepalive probes.
+	CacheKeepalive ClaudeCodeCacheKeepaliveConfig `yaml:"cache-keepalive" json:"cache-keepalive"`
 }
 
 // StreamingConfig holds server streaming behavior configuration.
