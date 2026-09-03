@@ -66,6 +66,3 @@ docker-compose.override.yml
 
 # Local LLM Wiki vault
 .llm-wiki
-
-# local patched build output
-cliproxyapi-patched
