@@ -76,7 +76,7 @@ table.sessions th.num { text-align: right; }
 .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 12px; line-height: 18px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
 .tag.hit { color: var(--good); border-color: rgba(34,177,76,.45); }
 .tag.miss { color: var(--warn); border-color: rgba(250,178,25,.5); }
-.tag.T0 { color: var(--serious); border-color: rgba(236,131,90,.5); }
+.tag.T0, .tag.cold { color: var(--serious); border-color: rgba(236,131,90,.5); }
 .tag.alert { color: var(--critical); border-color: rgba(224,82,82,.6); }
 .tag.probe { color: var(--read); border-color: rgba(57,135,229,.5); }
 
@@ -127,7 +127,7 @@ table.rows td.reason { color: var(--warn); }
 @media (max-width: 960px) { .two { grid-template-columns: 1fr; } }
 
 ol.events { list-style: none; margin: 0; padding: 0; }
-ol.events li { display: grid; grid-template-columns: 66px 78px 1fr; gap: 12px; padding: 9px 0 9px 10px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--line); align-items: start; }
+ol.events li { display: grid; grid-template-columns: 72px 78px 1fr; gap: 12px; padding: 9px 0 9px 10px; border-bottom: 1px solid var(--line); border-left: 3px solid var(--line); align-items: start; }
 ol.events li.alert { border-left-color: var(--critical); }
 ol.events li.cold-read { border-left-color: var(--serious); }
 ol.events li.partial-miss { border-left-color: var(--warn); }
@@ -240,7 +240,7 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
   const fmtK = (n) => { n = Number(n) || 0; const a = Math.abs(n); if (a >= 1e6) return (n / 1e6).toFixed(2) + 'M'; if (a >= 1e3) return (n / 1e3).toFixed(a >= 1e5 ? 0 : 1) + 'k'; return String(n); };
   const dur = (ms) => { if (!(ms > 0)) ms = 0; const s = Math.round(ms / 1000); if (s < 60) return s + 's'; const m = Math.floor(s / 60); if (m < 60) return m + 'm ' + (s % 60) + 's'; const h = Math.floor(m / 60); if (h < 48) return h + 'h ' + (m % 60) + 'm'; return Math.floor(h / 24) + 'd'; };
   const ago = (iso) => { const t = Date.parse(iso); return isNaN(t) ? '–' : dur(Date.now() - t) + ' ago'; };
-  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
+  const clock = (iso) => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }); };
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
   const shortAuth = (a) => { if (!a) return '–'; return a.replace(/^claude-/, '').replace(/\.json$/, '').replace(/@.*$/, ''); };
@@ -402,8 +402,8 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
         <td>${esc(x.regime || '–')}</td>
         <td title="${esc(x.last_seen)}">${ago(x.last_seen)}${x.last_is_probe ? ' <span class="tag probe">probe</span>' : ''}</td>
         <td><div class="ttl ${ttlCls}"><div class="bar"><i style="width:${pct}%"></i></div><small>${ttlText}</small></div></td>
-        <td><div class="warmth"><div class="bar"><i class="lost" style="width:100%"></i><i style="width:${readPct}%"></i></div><small>${fmtK(lastR)} of ${fmtK(maxR)}</small></div></td>
-        <td><span class="tag ${esc(tier)}">${esc(tierLabel)}</span>${x.last_miss_reason ? ` <span class="dim" title="upstream cache_miss_reason">${esc(x.last_miss_reason)}</span>` : ''}</td>
+        <td><div class="warmth"><div class="bar">${maxR ? '<i class="lost" style="width:100%"></i>' : ''}<i style="width:${readPct}%"></i></div><small>${maxR ? fmtK(lastR) + ' of ' + fmtK(maxR) : 'nothing cached yet'}</small></div></td>
+        <td><span class="tag ${tierLabel === 'first request' ? '' : esc(tier)}">${esc(tierLabel)}</span>${x.last_miss_reason ? ` <span class="dim" title="upstream cache_miss_reason">${esc(x.last_miss_reason)}</span>` : ''}</td>
         <td class="num">${fmt(x.hits)} / ${fmt(x.misses)} / ${fmt(x.t0s)}</td>
         <td class="num" ${x.lost_tokens ? 'style="color:var(--serious)"' : ''}>${fmtK(x.lost_tokens)}</td>
         <td>${kaText}</td>
