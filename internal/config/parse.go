@@ -47,6 +47,10 @@ func ParseConfigBytes(data []byte) (*Config, error) {
 	if errValidate := cfg.ClaudeCode.CacheKeepalive.Validate(); errValidate != nil {
 		return nil, errValidate
 	}
+	cfg.UsageCacheStats = cfg.UsageCacheStats.WithDefaults()
+	if errValidate := cfg.UsageCacheStats.Validate(); errValidate != nil {
+		return nil, errValidate
+	}
 	if errValidate := cfg.CredentialInFlight.Validate(); errValidate != nil {
 		return nil, errValidate
 	}
