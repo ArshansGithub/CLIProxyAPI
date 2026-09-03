@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
@@ -28,6 +29,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	if claudeResponsesCompactionRequested(req, opts) {
 		return e.executeClaudeCompactionStream(ctx, auth, req, opts)
 	}
+	requestStartedAt := time.Now()
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 	upstreamModel := e.upstreamModel(baseModel)
 
@@ -566,6 +568,16 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 			e.rememberClaudeOAuthToolAliases(body, oauthToolNamesReverseMap, upstreamMessageID)
 		}
 	}()
+	helps.ObserveClaudeCacheKeepalive(ctx, helps.ClaudeCacheKeepaliveObservation{
+		ConfirmedClaudeCode: confirmedClaudeCode,
+		AuthID:              authID,
+		AuthProvider:        e.Identifier(),
+		Model:               baseModel,
+		OriginalPayload:     originalPayload,
+		Headers:             incomingHeaders,
+		Metadata:            opts.Metadata,
+		StartedAt:           requestStartedAt,
+	})
 	result := &cliproxyexecutor.StreamResult{Headers: httpResp.Header.Clone(), Chunks: out}
 	if replayScope.valid() {
 		result = wrapClaudeThinkingReplayStream(ctx, result, replayScope)
