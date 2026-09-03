@@ -319,6 +319,12 @@ go build \
 
 Go 1.26 or newer (see `go.mod`). `go build ./... && go vet ./... && go test ./...` is green on the branch.
 
+If you run it as the Homebrew service (`brew services`), the binary is started with no arguments, so also bake in the config path the formula uses, or it will look for `./config.yaml` and exit:
+
+```bash
+-X main.DefaultConfigPath="$(brew --prefix)/etc/cliproxyapi.conf"
+```
+
 ### Config keys added by this branch
 
 Parts 1 and 3 add no config. Part 3 changes only how the existing `claude-header-defaults.user-agent` pin is compared, from an equality lock to a floor.
