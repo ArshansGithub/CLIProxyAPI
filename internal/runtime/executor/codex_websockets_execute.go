@@ -73,6 +73,7 @@ func (e *CodexWebsocketsExecutor) Execute(ctx context.Context, auth *cliproxyaut
 	body, _ = sjson.DeleteBytes(body, "prompt_cache_retention")
 	body, _ = sjson.DeleteBytes(body, "safety_identifier")
 	body = ensureWebSearchToolForHistory(body, opts.Headers)
+	body = stripCodexInternalMetadataForAPIKey(body, auth, baseURL)
 	if !useSIWC {
 		body = normalizeCodexInstructions(body, nativeRequest)
 		if e.cfg == nil || e.cfg.DisableImageGeneration == config.DisableImageGenerationOff {
