@@ -92,6 +92,10 @@ type Config struct {
 	// QuotaExceeded defines the behavior when a quota is exceeded.
 	QuotaExceeded QuotaExceeded `yaml:"quota-exceeded" json:"quota-exceeded"`
 
+	// OverloadRetry retries the same credential on upstream 529 overload before
+	// failing over, so a warm prompt cache is not abandoned for a short burst.
+	OverloadRetry OverloadRetryConfig `yaml:"overload-retry" json:"overload-retry"`
+
 	// Routing controls credential selection behavior.
 	Routing RoutingConfig `yaml:"routing" json:"routing"`
 
