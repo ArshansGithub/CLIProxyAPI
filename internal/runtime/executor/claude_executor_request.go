@@ -1195,7 +1195,7 @@ func applyClaudeHeadersWithNativeProfile(
 	if preserveCallerFingerprint && advisorNeeded {
 		baseBetas = withClaudeAdvisorToolBeta(baseBetas)
 	}
-	if !claudeRequestSupportsEffort(body, nil) {
+	if !confirmedClaudeCode && !claudeRequestSupportsEffort(body, nil) {
 		baseBetas = withoutClaudeBeta(baseBetas, claudeEffortBeta)
 	}
 	existingSet := make(map[string]bool)
@@ -1253,7 +1253,17 @@ func applyClaudeHeadersWithNativeProfile(
 		}
 	}
 	applyBetaHeader := func() {
-		// Enforce strict native Claude Code 2.1.280 model & turn beta gating:
+		// Enforce strict native Claude Code 2.1.280 model & turn beta gating on
+		// cloaked and translated callers only. A confirmed native client sent the
+		// header it wanted; reshaping it here would turn passthrough into cloaking.
+		if confirmedClaudeCode {
+			if strings.TrimSpace(baseBetas) == "" {
+				r.Header.Del("Anthropic-Beta")
+				return
+			}
+			r.Header.Set("Anthropic-Beta", baseBetas)
+			return
+		}
 		if !claudeRequestSupportsEffort(body, nil) {
 			baseBetas = withoutClaudeBeta(baseBetas, claudeEffortBeta)
 		}
