@@ -245,6 +245,81 @@ func TestFireSkipsWhenNoAgentsLive(t *testing.T) {
 	}
 }
 
+func observeAt(scheduler *Scheduler, session, model string, ttl time.Duration, body string, startedAt time.Time) {
+	scheduler.Observe(ObserveInput{
+		SessionID:        session,
+		BindingSessionID: "claude:" + session + ":agent:main",
+		AuthID:           "auth-a",
+		Provider:         "claude",
+		Model:            model,
+		Body:             []byte(body),
+		Headers:          http.Header{"Anthropic-Beta": []string{"claude-code-20250219"}},
+		TTL:              ttl,
+		StartedAt:        startedAt,
+	})
+}
+
+// A session whose in-process subagents are talking to the proxy on another
+// model lane leaves no task output file behind, so the filesystem liveness check
+// says idle. The proxy has seen that traffic itself and must count it.
+func TestFireProbesWhenOtherLaneTrafficIsRecent(t *testing.T) {
+	clock := &fakeClock{}
+	prober := &recordingProber{}
+	scheduler := testScheduler(t, clock, prober, staticLiveness{live: false}, staticBinding{authID: "auth-a", state: BindingBound}, func(cfg *Config) {
+		cfg.Probe5mModels = []string{"claude-fable-5-1"}
+		cfg.AgentIdleWindow = 10 * time.Minute
+	})
+
+	now := time.Now()
+	observeAt(scheduler, "sess-1", "claude-fable-5-1", 5*time.Minute, fiveMinuteBody, now)
+	// An opus subagent request on the same session: dropped by the 5m model
+	// policy, never scheduled, but proof the session is alive.
+	observeAt(scheduler, "sess-1", "claude-opus-5", 5*time.Minute, fiveMinuteBody, now.Add(time.Second))
+	if got := scheduler.Snapshot().Counters.SkippedByReason["skipped-model"]; got != 1 {
+		t.Fatalf("opus request skipped-model count = %d, want 1", got)
+	}
+
+	clock.fireLatest(t)
+
+	if calls := prober.calls(); len(calls) != 1 {
+		t.Fatalf("probed %d times with recent other-lane traffic, want 1", len(calls))
+	}
+}
+
+func TestFireSkipsWhenOtherLaneTrafficIsOutsideIdleWindow(t *testing.T) {
+	clock := &fakeClock{}
+	prober := &recordingProber{}
+	scheduler := testScheduler(t, clock, prober, staticLiveness{live: false}, staticBinding{authID: "auth-a", state: BindingBound}, func(cfg *Config) {
+		cfg.AgentIdleWindow = 10 * time.Minute
+	})
+
+	now := time.Now()
+	observeAt(scheduler, "sess-1", "claude-haiku-4-5-20251001", time.Hour, oneHourBody, now.Add(-30*time.Minute))
+	observeAt(scheduler, "sess-1", "claude-opus-5", 5*time.Minute, fiveMinuteBody, now.Add(-20*time.Minute))
+
+	clock.fireLatest(t)
+
+	if calls := prober.calls(); len(calls) != 0 {
+		t.Fatalf("probed %d times with stale other-lane traffic, want 0", len(calls))
+	}
+}
+
+func TestFireIgnoresTrafficOlderThanTheKeptAliveRequest(t *testing.T) {
+	clock := &fakeClock{}
+	prober := &recordingProber{}
+	scheduler := testScheduler(t, clock, prober, staticLiveness{live: false}, staticBinding{authID: "auth-a", state: BindingBound}, nil)
+
+	now := time.Now()
+	observeAt(scheduler, "sess-1", "claude-opus-5", 5*time.Minute, fiveMinuteBody, now.Add(-time.Minute))
+	observeAt(scheduler, "sess-1", "claude-haiku-4-5-20251001", time.Hour, oneHourBody, now)
+
+	clock.fireLatest(t)
+
+	if calls := prober.calls(); len(calls) != 0 {
+		t.Fatalf("probed %d times when the only other traffic predates the kept-alive request, want 0", len(calls))
+	}
+}
+
 func TestFireProbesWhenLivenessIsAlwaysEvenWithNoAgents(t *testing.T) {
 	clock := &fakeClock{}
 	prober := &recordingProber{}
