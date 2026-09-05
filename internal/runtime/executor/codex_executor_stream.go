@@ -74,6 +74,7 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 	_ = doc.Delete("generate")
 	_ = doc.Delete("prompt_cache_retention")
 	_ = doc.Delete("safety_identifier")
+	stripCodexInternalMetadataForAPIKeyDoc(doc, auth, baseURL)
 	reasoningSummaryDelivery := doc.Get("stream_options.reasoning_summary_delivery")
 	hasReasoningSummaryDelivery := reasoningSummaryDelivery.Exists()
 	var reasoningSummaryDeliveryVal any

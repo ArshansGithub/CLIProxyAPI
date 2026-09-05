@@ -72,6 +72,7 @@ func (e *CodexExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, re
 	_ = doc.Delete("generate")
 	_ = doc.Delete("prompt_cache_retention")
 	_ = doc.Delete("safety_identifier")
+	stripCodexInternalMetadataForAPIKeyDoc(doc, auth, baseURL)
 	_ = doc.Delete("stream_options")
 	useSIWC := codexUseSIWCForRequest(ctx, auth, opts.Headers)
 	instructionsResult := ojson.GetBytesNoCopy(req.Payload, "instructions")
