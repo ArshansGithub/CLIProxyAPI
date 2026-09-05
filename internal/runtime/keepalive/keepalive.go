@@ -68,7 +68,9 @@ type Config struct {
 	// Probe5mModels overrides the built-in cheap-cache-read list Probe5mAuto
 	// matches the request model against. Empty means CheapCacheReadModels.
 	Probe5mModels []string
-	// OnlyWhenAgentsActive gates every probe on the liveness check.
+	// OnlyWhenAgentsActive gates every probe on liveness: the proxy's own record
+	// of other traffic on the session inside AgentIdleWindow, or failing that
+	// the configured Liveness check.
 	OnlyWhenAgentsActive bool
 	// AgentIdleWindow is how long an agent may be silent and still count as
 	// running. It is deliberately not the cache TTL: an agent that has written
@@ -326,6 +328,12 @@ type Scheduler struct {
 	mu       sync.Mutex
 	cfg      Config
 	sessions map[string]*sessionState
+	// lastSeen records the newest request the proxy observed per session id,
+	// regardless of model or whether it qualified for scheduling. It is the
+	// proxy's own liveness evidence: a Claude Code session whose in-process
+	// subagents are talking to the proxy on another model lane leaves no task
+	// output file behind, so the filesystem check alone reports it idle.
+	lastSeen map[string]time.Time
 	stopped  bool
 
 	prober   Prober
@@ -343,6 +351,7 @@ func New(cfg Config) *Scheduler {
 	return &Scheduler{
 		cfg:      cfg,
 		sessions: make(map[string]*sessionState),
+		lastSeen: make(map[string]time.Time),
 		counters: Counters{SkippedByReason: make(map[string]uint64)},
 		newTimer: func(d time.Duration, f func()) Timer { return time.AfterFunc(d, f) },
 		now:      time.Now,
@@ -468,6 +477,9 @@ func (s *Scheduler) Observe(in ObserveInput) {
 	if stopped || !cfg.Enabled {
 		return
 	}
+	if in.SessionID != "" {
+		s.noteTraffic(in.SessionID, in.StartedAt)
+	}
 	if in.SessionID == "" || in.AuthID == "" || in.TTL <= 0 || len(in.Body) == 0 {
 		return
 	}
@@ -570,6 +582,51 @@ func (s *Scheduler) countSkip(reason string) {
 	s.counters.SkippedByReason[reason]++
 }
 
+// maxTrafficSessions bounds the lastSeen map; entries older than an hour are
+// dropped once it grows past this, which is far beyond any idle window.
+const maxTrafficSessions = 4096
+
+// noteTraffic records that the proxy saw a request for the session. It runs for
+// every observed request, including ones a policy gate later drops, because the
+// point is to know the session is alive, not whether this request was probed.
+func (s *Scheduler) noteTraffic(sessionID string, at time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if at.IsZero() {
+		at = s.now()
+	}
+	if previous, ok := s.lastSeen[sessionID]; !ok || at.After(previous) {
+		s.lastSeen[sessionID] = at
+	}
+	if len(s.lastSeen) > maxTrafficSessions {
+		cutoff := s.now().Add(-time.Hour)
+		for key, seen := range s.lastSeen {
+			if seen.Before(cutoff) {
+				delete(s.lastSeen, key)
+			}
+		}
+	}
+}
+
+// recentTraffic reports whether the proxy saw a request for the session that
+// arrived after the request being kept alive and inside the idle window. Any
+// such request is by construction one that did not re-arm this timer (a
+// re-arming request supersedes the generation), so it is other traffic on the
+// same session: a subagent on another model lane, a helper call, or a turn on
+// a pool the scheduler does not probe. That is direct evidence the session is
+// still running, and it does not depend on Claude Code's on-disk layout.
+func (s *Scheduler) recentTraffic(sessionID string, since time.Time, window time.Duration) bool {
+	s.mu.Lock()
+	seen, ok := s.lastSeen[sessionID]
+	now := s.now()
+	s.mu.Unlock()
+	if !ok || !seen.After(since) || seen.Before(now.Add(-window)) {
+		return false
+	}
+	log.Debugf("cache-keepalive: liveness hit | session=%s source=proxy-traffic seen=%s", truncateSession(sessionID), seen.Format(time.RFC3339))
+	return true
+}
+
 func (s *Scheduler) fire(sessionID string, generation uint64) {
 	s.mu.Lock()
 	cfg := s.cfg
@@ -610,7 +667,7 @@ func (s *Scheduler) fire(sessionID string, generation uint64) {
 		if idleWindow <= 0 {
 			idleWindow = defaultAgentIdleWindow
 		}
-		if liveness == nil || !liveness.Live(sessionID, idleWindow) {
+		if !s.recentTraffic(sessionID, state.lastRequestAt, idleWindow) && (liveness == nil || !liveness.Live(sessionID, idleWindow)) {
 			s.retire(sessionID, generation, "no-live-agents")
 			log.Infof("cache-keepalive: skipped | session=%s auth=%s model=%s ttl_tier=%s reason=no-live-agents", truncateSession(sessionID), authID, model, tier)
 			return
