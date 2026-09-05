@@ -362,7 +362,10 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
   function keepaliveFor(id) { return ((state.keepalive && state.keepalive.sessions) || []).find((k) => k.session_id === id) || null; }
 
   function renderSessions() {
-    const tbody = $('sessions'); const s = state.stats; tbody.innerHTML = '';
+    const tbody = $('sessions'); const s = state.stats;
+    // Re-rendering rebuilds the open session's request list; keep its scroll position.
+    const prevWrap = tbody.querySelector('.rows-wrap'); const keepScroll = prevWrap ? prevWrap.scrollTop : 0;
+    tbody.innerHTML = '';
     if (!s) return;
     let list = s.sessions || [];
     const liveN = list.filter(isLive).length;
@@ -412,7 +415,7 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
       tr.addEventListener('click', toggle);
       tr.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); } });
       tbody.appendChild(tr);
-      if (state.open === x.id) tbody.appendChild(renderDetail(x));
+      if (state.open === x.id) { tbody.appendChild(renderDetail(x)); const w = tbody.querySelector('.rows-wrap'); if (w && keepScroll) w.scrollTop = keepScroll; }
     }
   }
 
@@ -429,7 +432,7 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
       <span>account changes <b>${fmt(sum.rebinds)}</b></span>
       <span>written to 5m / 1h pool <b>${fmtK(sum.cache_creation_5m_tokens)} / ${fmtK(sum.cache_creation_1h_tokens)}</b></span>
       <span>total read <b>${fmtK(sum.cache_read_tokens)}</b></span>
-      <span>lost <b>${fmtK(sum.lost_tokens)}</b></span>
+      <span>lost <b>${fmtK(sum.lost_tokens)}</b>${sum.sidecar_lost_tokens ? ` <span class="dim">(${sum.sidecar_lost_tokens >= sum.lost_tokens ? 'all' : fmtK(sum.sidecar_lost_tokens)} on helper calls)</span>` : ''}</span>
       <button class="quiet" data-act="filter">Show this session's events</button>
     </div>`));
     box.querySelector('[data-act=filter]').addEventListener('click', (ev) => { ev.stopPropagation(); state.filterSession = x.id; render(); $('events').scrollIntoView({ block: 'start', behavior: 'smooth' }); });
@@ -440,8 +443,8 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
     const tbl = el(`<div class="rows-wrap"><table class="rows"><thead><tr><th>#</th><th class="left">Time</th><th class="left">Result</th><th>Read</th><th>Change</th><th>Written 5m</th><th>Written 1h</th><th>Input</th><th>Output</th><th class="left">Account</th><th class="left">Upstream reason</th></tr></thead><tbody></tbody></table></div>`);
     const tb = tbl.querySelector('tbody');
     for (const r of rows.slice().reverse()) {
-      const tierLabel = r.tier === 'T0' ? (r.t0_cause ? 'cold, ' + r.t0_cause : 'cold') : r.tier;
-      tb.appendChild(el(`<tr><td>${r.seq}</td><td class="left">${esc(clock(r.at))}</td><td class="left"><span class="tag ${esc(r.tier)}">${esc(tierLabel)}</span>${r.is_probe ? ' <span class="tag probe">probe</span>' : ''}${r.rebind ? ' <span class="tag">rebind</span>' : ''}</td><td>${fmt(r.cache_read_tokens)}</td><td style="color:${r.delta_read < 0 ? 'var(--serious)' : 'inherit'}">${r.delta_read > 0 ? '+' : ''}${fmt(r.delta_read)}</td><td>${fmt(r.cache_creation_5m_tokens)}</td><td>${fmt(r.cache_creation_1h_tokens)}</td><td>${fmt(r.input_tokens)}</td><td>${fmt(r.output_tokens)}</td><td class="left" title="${esc(r.auth_id)}">${esc(shortAuth(r.auth_id))}</td><td class="left reason">${esc(r.miss_reason || '')}${r.missed_tokens ? ' (' + fmt(r.missed_tokens) + ')' : ''}</td></tr>`));
+      const tierLabel = r.tier === 'T0' ? (r.t0_cause === 'detached' ? 'cold, helper' : r.t0_cause ? 'cold, ' + r.t0_cause : 'cold') : r.tier;
+      tb.appendChild(el(`<tr><td>${r.seq}</td><td class="left">${esc(clock(r.at))}</td><td class="left"><span class="tag ${esc(r.tier)}">${esc(tierLabel)}</span>${r.is_probe ? ' <span class="tag probe">probe</span>' : ''}${r.rebind ? ' <span class="tag">rebind</span>' : ''}${r.sidecar ? ' <span class="tag" title="helper call on another model lane: it reuses the session id but has its own cache prefix; not the main conversation">' + esc(shortModel(r.model)) + ' sidecar</span>' : ''}</td><td>${fmt(r.cache_read_tokens)}</td><td style="color:${r.delta_read < 0 ? 'var(--serious)' : 'inherit'}">${r.delta_read > 0 ? '+' : ''}${fmt(r.delta_read)}</td><td>${fmt(r.cache_creation_5m_tokens)}</td><td>${fmt(r.cache_creation_1h_tokens)}</td><td>${fmt(r.input_tokens)}</td><td>${fmt(r.output_tokens)}</td><td class="left" title="${esc(r.auth_id)}">${esc(shortAuth(r.auth_id))}</td><td class="left reason">${esc(r.miss_reason || '')}${r.missed_tokens ? ' (' + fmt(r.missed_tokens) + ')' : ''}</td></tr>`));
     }
     box.appendChild(tbl);
     return tr;
