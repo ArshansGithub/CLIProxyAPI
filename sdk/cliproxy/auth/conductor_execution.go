@@ -512,6 +512,18 @@ func (m *Manager) executeMixedOnce(ctx context.Context, providers []string, req 
 			startExec := time.Now()
 			resp, errExec := executor.Execute(execCtx, auth, execReq, execOpts)
 			errExec = markUpstreamExecutionAttemptFromContext(execCtx, errExec)
+			for overloadAttempt := 0; errExec != nil; overloadAttempt++ {
+				wait, okRetry := m.overloadRetryWait(execCtx, errExec, overloadAttempt)
+				if !okRetry {
+					break
+				}
+				logOverloadRetry(execCtx, auth, routeModel, overloadAttempt, m.overloadRetryConfig().Attempts, wait)
+				if !waitForOverloadRetry(execCtx, wait) {
+					break
+				}
+				resp, errExec = executor.Execute(execCtx, auth, execReq, execOpts)
+				errExec = markUpstreamExecutionAttemptFromContext(execCtx, errExec)
+			}
 			durationExec := time.Since(startExec)
 			if errExec != nil {
 				if hasUpstreamExecutionAttempt(errExec) {
@@ -1032,6 +1044,17 @@ func (m *Manager) executeStreamMixedOnce(ctx context.Context, providers []string
 			pooled = false
 		}
 		streamResult, errStream := m.executeStreamWithModelPool(execCtx, executor, auth, provider, execReq, execOpts, routeModel, streamExecutionModel, models, pooled, aliasResult, routing, !homeMode || selection != nil, selection != nil)
+		for overloadAttempt := 0; errStream != nil; overloadAttempt++ {
+			wait, okRetry := m.overloadRetryWait(execCtx, errStream, overloadAttempt)
+			if !okRetry {
+				break
+			}
+			logOverloadRetry(execCtx, auth, routeModel, overloadAttempt, m.overloadRetryConfig().Attempts, wait)
+			if !waitForOverloadRetry(execCtx, wait) {
+				break
+			}
+			streamResult, errStream = m.executeStreamWithModelPool(execCtx, executor, auth, provider, execReq, execOpts, routeModel, streamExecutionModel, models, pooled, aliasResult, routing, !homeMode || selection != nil, selection != nil)
+		}
 		if errStream != nil {
 			if hasUpstreamExecutionAttempt(errStream) {
 				upstreamErr = errStream
