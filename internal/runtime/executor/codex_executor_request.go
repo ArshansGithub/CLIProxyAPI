@@ -367,7 +367,7 @@ func applyCodexHeadersFromSources(r *http.Request, auth *cliproxyauth.Auth, toke
 		attrs = auth.Attributes
 	}
 	util.ApplyCustomHeadersFromAttrs(r, attrs, ginHeaders)
-	applyCodexCloakingHeaders(r.Header, cfg, auth)
+	applyCodexCloakingHeaders(r.Header, cfg, auth, ginHeaders)
 }
 
 func isCodexCloakingDisabled(cfg *config.Config, auth *cliproxyauth.Auth) bool {
@@ -387,12 +387,30 @@ func isCodexCloakingDisabled(cfg *config.Config, auth *cliproxyauth.Auth) bool {
 	return false
 }
 
-func applyCodexCloakingHeaders(headers http.Header, cfg *config.Config, auth *cliproxyauth.Auth) {
+// applyCodexCloakingHeaders presents the built-in Codex identity on requests
+// that did not arrive from a Codex client. A caller that sends its own
+// Originator header is a real Codex client and is passed through unchanged:
+// its User-Agent and Originator already describe the software talking to the
+// backend, and rewriting them would turn passthrough into cloaking. Callers
+// without one (translated Claude Code, OpenAI-compatible SDKs) still receive the
+// default identity unless cloaking is disabled globally, per key, or per
+// credential (isCodexCloakingDisabled). The two switches compose: the
+// operator's disable is caller-blind, the Originator test is config-blind.
+func applyCodexCloakingHeaders(headers http.Header, cfg *config.Config, auth *cliproxyauth.Auth, clientHeaders http.Header) {
 	if headers == nil || cfg == nil || isCodexCloakingDisabled(cfg, auth) {
+		return
+	}
+	if codexClientPresentsIdentity(clientHeaders) {
 		return
 	}
 	headers.Set("User-Agent", codexUserAgent)
 	headers.Set("Originator", codexOriginator)
+}
+
+// codexClientPresentsIdentity reports whether the downstream caller identified
+// itself as a Codex client with an Originator header.
+func codexClientPresentsIdentity(clientHeaders http.Header) bool {
+	return clientHeaders != nil && strings.TrimSpace(clientHeaders.Get("Originator")) != ""
 }
 
 func normalizeCodexInstructions(body []byte, nativeRequest ...bool) []byte {
