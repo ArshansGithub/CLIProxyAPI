@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -502,4 +503,65 @@ func codexImageGenerationToolModel(body []byte) string {
 		}
 	}
 	return codexDefaultImageToolModel
+}
+
+// codexBaseURLIsChatGPT reports whether the upstream is the ChatGPT Codex
+// backend, the only Responses endpoint that accepts every Codex-internal field.
+func codexBaseURLIsChatGPT(baseURL string) bool {
+	trimmed := strings.TrimSpace(baseURL)
+	return trimmed == "" || strings.Contains(strings.ToLower(trimmed), "chatgpt.com")
+}
+
+const codexInternalMetadataPassthroughKey = "internal_chat_message_metadata_passthrough"
+
+// stripCodexInternalMetadataForAPIKey drops
+// input[].internal_chat_message_metadata_passthrough.content_item_kinds when
+// the request is bound for an api-key upstream that is not the ChatGPT
+// backend (Azure OpenAI, api.openai.com, other Responses-compatible hosts).
+// The Codex CLI attaches that key to messages carrying attachments; the public
+// Responses API rejects the whole request with "Unknown parameter:
+// 'input[N].internal_chat_message_metadata_passthrough.content_item_kinds'".
+// Other passthrough fields such as turn_id are left alone because they are
+// accepted there and the multi-agent flow relies on them. A passthrough object
+// left empty by the strip is removed as well.
+func stripCodexInternalMetadataForAPIKey(body []byte, auth *cliproxyauth.Auth, baseURL string) []byte {
+	if !codexAuthUsesAPIKey(auth) || codexBaseURLIsChatGPT(baseURL) {
+		return body
+	}
+	if !bytes.Contains(body, []byte(`"content_item_kinds"`)) {
+		return body
+	}
+	items := gjson.GetBytes(body, "input")
+	if !items.IsArray() {
+		return body
+	}
+	type target struct {
+		index      int
+		dropObject bool
+	}
+	var targets []target
+	index := 0
+	items.ForEach(func(_, item gjson.Result) bool {
+		meta := item.Get(codexInternalMetadataPassthroughKey)
+		if meta.IsObject() && meta.Get("content_item_kinds").Exists() {
+			remaining := 0
+			meta.ForEach(func(key, _ gjson.Result) bool {
+				if key.String() != "content_item_kinds" {
+					remaining++
+				}
+				return true
+			})
+			targets = append(targets, target{index: index, dropObject: remaining == 0})
+		}
+		index++
+		return true
+	})
+	for _, t := range targets {
+		path := "input." + strconv.Itoa(t.index) + "." + codexInternalMetadataPassthroughKey
+		if !t.dropObject {
+			path += ".content_item_kinds"
+		}
+		body, _ = sjson.DeleteBytes(body, path)
+	}
+	return body
 }

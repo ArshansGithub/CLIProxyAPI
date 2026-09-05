@@ -60,6 +60,7 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 	body, _ = sjson.DeleteBytes(body, "generate")
 	body, _ = sjson.DeleteBytes(body, "prompt_cache_retention")
 	body, _ = sjson.DeleteBytes(body, "safety_identifier")
+	body = stripCodexInternalMetadataForAPIKey(body, auth, baseURL)
 	reasoningSummaryDelivery := gjson.GetBytes(body, "stream_options.reasoning_summary_delivery")
 	body, _ = sjson.DeleteBytes(body, "stream_options")
 	if reasoningSummaryDelivery.Exists() {
