@@ -1112,7 +1112,7 @@ func TestApplyCodexWebsocketHeadersDefaultsToCurrentResponsesBeta(t *testing.T) 
 	}
 }
 
-func TestApplyCodexWebsocketHeadersDefaultsToCodexCloaking(t *testing.T) {
+func TestApplyCodexWebsocketHeadersCloaksCallersWithoutCodexIdentity(t *testing.T) {
 	tests := []struct {
 		name  string
 		auth  *cliproxyauth.Auth
@@ -1147,9 +1147,9 @@ func TestApplyCodexWebsocketHeadersDefaultsToCodexCloaking(t *testing.T) {
 			cfg := &config.Config{
 				CodexHeaderDefaults: config.CodexHeaderDefaults{UserAgent: "config-ua"},
 			}
+			// A translated caller (Claude Code, an OpenAI SDK) sends no Originator.
 			ctx := contextWithGinHeaders(map[string]string{
-				"User-Agent": "client-ua",
-				"Originator": "client-origin",
+				"User-Agent": "claude-cli/2.1.259 (external, cli)",
 			})
 			headers := http.Header{}
 			headers.Set("User-Agent", "existing-ua")
@@ -1164,6 +1164,51 @@ func TestApplyCodexWebsocketHeadersDefaultsToCodexCloaking(t *testing.T) {
 				t.Fatalf("Originator = %q, want %q", got, codexOriginator)
 			}
 		})
+	}
+}
+
+// A caller that presents its own Originator is a real Codex client and is passed
+// through: the proxy must not replace the identity of the software that is
+// actually talking to the backend, even with cloaking left at its default.
+func TestApplyCodexWebsocketHeadersPassesThroughCodexClientIdentityByDefault(t *testing.T) {
+	cfg := &config.Config{}
+	auth := &cliproxyauth.Auth{
+		Provider: "codex",
+		Metadata: map[string]any{"email": "user@example.com"},
+	}
+	ctx := contextWithGinHeaders(map[string]string{
+		"Originator": "codex_cli_rs",
+		"User-Agent": "codex_cli_rs/0.150.0 (Mac OS 26.5.0; arm64)",
+		"Version":    "0.150.0",
+	})
+
+	headers := applyCodexWebsocketHeaders(ctx, http.Header{}, auth, "", cfg)
+
+	if got := headers.Get("Originator"); got != "codex_cli_rs" {
+		t.Fatalf("Originator = %q, want caller's codex_cli_rs", got)
+	}
+	if got := headers.Get("User-Agent"); got != "codex_cli_rs/0.150.0 (Mac OS 26.5.0; arm64)" {
+		t.Fatalf("User-Agent = %q, want caller's user agent", got)
+	}
+}
+
+func TestApplyCodexCloakingHeadersHTTPPathHonoursCallerIdentity(t *testing.T) {
+	cfg := &config.Config{}
+	withIdentity := http.Header{"Originator": {"codex-tui"}, "User-Agent": {"codex-tui/0.150.0"}}
+	target := http.Header{"User-Agent": {"codex-tui/0.150.0"}, "Originator": {"codex-tui"}}
+	applyCodexCloakingHeaders(target, cfg, withIdentity)
+	if got := target.Get("User-Agent"); got != "codex-tui/0.150.0" {
+		t.Fatalf("User-Agent = %q, want caller's preserved", got)
+	}
+
+	withoutIdentity := http.Header{"User-Agent": {"openai-node/4.0.0"}}
+	target = http.Header{"User-Agent": {"openai-node/4.0.0"}}
+	applyCodexCloakingHeaders(target, cfg, withoutIdentity)
+	if got := target.Get("User-Agent"); got != codexUserAgent {
+		t.Fatalf("User-Agent = %q, want default %q for a caller without Codex identity", got, codexUserAgent)
+	}
+	if got := target.Get("Originator"); got != codexOriginator {
+		t.Fatalf("Originator = %q, want default %q", got, codexOriginator)
 	}
 }
 
@@ -1710,12 +1755,15 @@ func TestApplyCodexHeadersUsesConfigUserAgentForOAuth(t *testing.T) {
 }
 
 func TestApplyCodexHeadersDefaultsToCodexCloaking(t *testing.T) {
-	req, err := http.NewRequest(http.MethodPost, "https://example.com/responses", nil)
-	if err != nil {
-		t.Fatalf("NewRequest() error = %v", err)
+	newReq := func() *http.Request {
+		req, err := http.NewRequest(http.MethodPost, "https://example.com/responses", nil)
+		if err != nil {
+			t.Fatalf("NewRequest() error = %v", err)
+		}
+		req.Header.Set("User-Agent", "existing-ua")
+		req.Header.Set("Originator", "existing-origin")
+		return req
 	}
-	req.Header.Set("User-Agent", "existing-ua")
-	req.Header.Set("Originator", "existing-origin")
 	cfg := &config.Config{
 		CodexHeaderDefaults: config.CodexHeaderDefaults{
 			UserAgent: "config-ua",
@@ -1729,19 +1777,35 @@ func TestApplyCodexHeadersDefaultsToCodexCloaking(t *testing.T) {
 			"header:Originator": "custom-origin",
 		},
 	}
-	ginHeaders := http.Header{
-		"User-Agent": []string{"client-ua"},
-		"Originator": []string{"client-origin"},
-	}
 
-	applyCodexHeadersFromSources(req, auth, "api-key", false, cfg, ginHeaders)
+	t.Run("caller without Codex identity is cloaked", func(t *testing.T) {
+		req := newReq()
+		ginHeaders := http.Header{"User-Agent": []string{"client-ua"}}
+		applyCodexHeadersFromSources(req, auth, "api-key", false, cfg, ginHeaders)
+		if got := req.Header.Get("User-Agent"); got != codexUserAgent {
+			t.Fatalf("User-Agent = %q, want %q", got, codexUserAgent)
+		}
+		if got := req.Header.Get("Originator"); got != codexOriginator {
+			t.Fatalf("Originator = %q, want %q", got, codexOriginator)
+		}
+	})
 
-	if got := req.Header.Get("User-Agent"); got != codexUserAgent {
-		t.Fatalf("User-Agent = %q, want %q", got, codexUserAgent)
-	}
-	if got := req.Header.Get("Originator"); got != codexOriginator {
-		t.Fatalf("Originator = %q, want %q", got, codexOriginator)
-	}
+	t.Run("caller with Codex identity is not re-dressed", func(t *testing.T) {
+		req := newReq()
+		ginHeaders := http.Header{
+			"User-Agent": []string{"client-ua"},
+			"Originator": []string{"client-origin"},
+		}
+		applyCodexHeadersFromSources(req, auth, "api-key", false, cfg, ginHeaders)
+		// Per-credential header overrides configured by the operator still apply;
+		// only the built-in default identity stays out of the way.
+		if got := req.Header.Get("User-Agent"); got == codexUserAgent {
+			t.Fatalf("User-Agent = %q, built-in default must not replace a Codex caller's identity", got)
+		}
+		if got := req.Header.Get("Originator"); got != "custom-origin" {
+			t.Fatalf("Originator = %q, want operator override custom-origin", got)
+		}
+	})
 }
 
 func TestApplyCodexHeaders_EmptyAPIKey_OmitsAuthorizationAndOAuthHeaders(t *testing.T) {
