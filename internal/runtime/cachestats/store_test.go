@@ -547,3 +547,158 @@ func TestShortIDHashesCompositeKeys(t *testing.T) {
 		t.Error("shortID must be stable for the same key")
 	}
 }
+
+// A Claude Code session interleaves models: the main thread on one model and
+// subagent or helper calls on another, each pinned to its own credential by
+// session affinity. Each model lane carries its own prefix, so a lane switch
+// must never be judged against another lane's high-water mark.
+func TestModelLanesAreJudgedIndependently(t *testing.T) {
+	base := time.Date(2026, 9, 3, 16, 25, 0, 0, time.UTC)
+	store := newTestStore(t, 10, 20, time.Hour)
+
+	fable := func(read, create int64, at time.Time) Observation {
+		o := observation("s1", read, create, at)
+		o.Model = "claude-fable-5-1"
+		o.AuthID = "auth-a"
+		return o
+	}
+	sonnet := func(read, create int64, at time.Time) Observation {
+		o := observation("s1", read, create, at)
+		o.Model = "claude-sonnet-5"
+		o.AuthID = "auth-b"
+		return o
+	}
+
+	store.Record(fable(0, 50000, base))
+	store.Record(fable(150000, 2000, base.Add(10*time.Second)))
+	store.Record(sonnet(0, 54000, base.Add(20*time.Second)))    // sonnet lane cold start
+	store.Record(sonnet(54000, 100, base.Add(25*time.Second)))  // sonnet lane full hit
+	store.Record(fable(152000, 3000, base.Add(30*time.Second))) // fable lane full hit
+	store.Record(fable(0, 50000, base.Add(40*time.Second)))     // fable lane genuinely cold
+
+	detail, _ := store.Session("s1")
+	reqs := detail.Requests
+	wantTier := []Tier{TierT0, TierHit, TierT0, TierHit, TierHit, TierT0}
+	wantCause := []T0Cause{T0CauseFirst, "", T0CauseFirst, "", "", T0CauseExpiry}
+	for i := range reqs {
+		if reqs[i].Tier != wantTier[i] {
+			t.Errorf("request %d tier = %q, want %q", i+1, reqs[i].Tier, wantTier[i])
+		}
+		if reqs[i].T0Cause != wantCause[i] {
+			t.Errorf("request %d t0_cause = %q, want %q", i+1, reqs[i].T0Cause, wantCause[i])
+		}
+		if reqs[i].Rebind {
+			t.Errorf("request %d marked rebind across a model lane switch", i+1)
+		}
+	}
+	if reqs[4].DeltaRead != 2000 {
+		t.Errorf("fable delta after sonnet detour = %d, want 2000", reqs[4].DeltaRead)
+	}
+	s := detail.Summary
+	if s.LostTokens != 0 || s.Misses != 0 || s.Rebinds != 0 {
+		t.Errorf("lane switches charged as loss: lost=%d misses=%d rebinds=%d", s.LostTokens, s.Misses, s.Rebinds)
+	}
+	if s.T0Expiries != 1 {
+		t.Errorf("t0 expiries = %d, want 1 (only the real fable cold read)", s.T0Expiries)
+	}
+	if s.MaxCacheReadTokens != 152000 {
+		t.Errorf("max read = %d, want 152000", s.MaxCacheReadTokens)
+	}
+	wantSidecar := []bool{false, false, true, true, false, false}
+	for i := range reqs {
+		if reqs[i].Sidecar != wantSidecar[i] {
+			t.Errorf("request %d sidecar = %v, want %v", i+1, reqs[i].Sidecar, wantSidecar[i])
+		}
+	}
+	// The row keeps describing the main lane even right after a helper call.
+	store.Record(sonnet(54100, 50, base.Add(50*time.Second)))
+	after, _ := store.Session("s1")
+	if after.Summary.Model != "claude-fable-5-1" || after.Summary.AuthID != "auth-a" {
+		t.Errorf("summary follows sidecar lane: model=%s auth=%s", after.Summary.Model, after.Summary.AuthID)
+	}
+	if after.Summary.MaxCacheReadTokens != 152000 || after.Summary.LastCacheReadTokens != 0 {
+		t.Errorf("summary warmth follows sidecar lane: max=%d last=%d", after.Summary.MaxCacheReadTokens, after.Summary.LastCacheReadTokens)
+	}
+	events := store.Events(0, 10).Events
+	if len(events) != 1 || events[0].Kind != EventColdRead || events[0].LostTokens != 152000 {
+		t.Errorf("events = %+v, want exactly one cold-read of 152000 on the fable lane", events)
+	}
+}
+
+// A tiny request on the session's own model that reads nothing is a helper
+// call with a different, much smaller prefix, not the conversation going cold.
+// It must not count as an expiry, must not emit a loss event, and must leave
+// the lane's high-water mark and next-request classification untouched.
+func TestSmallColdRequestOnSameLaneIsDetached(t *testing.T) {
+	base := time.Date(2026, 9, 3, 20, 0, 0, 0, time.UTC)
+	store := newTestStore(t, 10, 20, time.Hour)
+	fable := func(read, create, input int64, at time.Time) Observation {
+		o := observation("s1", read, create, at)
+		o.Model = "claude-fable-5-1"
+		o.InputTokens = input
+		return o
+	}
+	store.Record(fable(0, 50000, 2, base))
+	store.Record(fable(500000, 2000, 2, base.Add(10*time.Second)))
+	store.Record(fable(0, 20000, 90, base.Add(20*time.Second))) // helper call: 20k prefix vs 500k
+	store.Record(fable(502000, 1000, 2, base.Add(30*time.Second)))
+	store.Record(fable(0, 480000, 2, base.Add(40*time.Second))) // real full rewrite
+
+	detail, _ := store.Session("s1")
+	r := detail.Requests
+	if r[2].Tier != TierT0 || r[2].T0Cause != T0CauseDetached || !r[2].Sidecar {
+		t.Errorf("helper call = tier %q cause %q sidecar %v, want T0/detached/sidecar", r[2].Tier, r[2].T0Cause, r[2].Sidecar)
+	}
+	if r[3].Tier != TierHit || r[3].DeltaRead != 2000 {
+		t.Errorf("request after helper = %q delta %d, want hit/+2000", r[3].Tier, r[3].DeltaRead)
+	}
+	if r[4].T0Cause != T0CauseExpiry {
+		t.Errorf("full rewrite cause = %q, want expiry", r[4].T0Cause)
+	}
+	s := detail.Summary
+	if s.T0Expiries != 1 || s.T0Detached != 1 {
+		t.Errorf("t0 split expiries=%d detached=%d, want 1/1", s.T0Expiries, s.T0Detached)
+	}
+	ev := store.Events(0, 10).Events
+	if len(ev) != 1 || ev[0].RequestSeq != 5 {
+		t.Errorf("events = %d (first seq %d), want exactly the full rewrite", len(ev), func() int {
+			if len(ev) > 0 {
+				return ev[0].RequestSeq
+			}
+			return 0
+		}())
+	}
+}
+
+// Losses on helper lanes are reported separately and never feed the
+// sustained-loss alert, which is about the main conversation.
+func TestSidecarLossIsSplitOut(t *testing.T) {
+	base := time.Date(2026, 9, 3, 19, 0, 0, 0, time.UTC)
+	store := NewStore(Config{Enabled: true, MaxSessions: 10, PerSessionRequests: 50, IdleTTL: time.Hour,
+		Alert: AlertConfig{Enabled: true, LostTokensPerHour: 10000}})
+	main := func(read, create int64, at time.Time) Observation {
+		o := observation("s1", read, create, at)
+		o.Model = "claude-fable-5-1"
+		return o
+	}
+	side := func(read, create int64, at time.Time) Observation {
+		o := observation("s1", read, create, at)
+		o.Model = "claude-sonnet-5"
+		o.AuthID = "auth-b"
+		return o
+	}
+	store.Record(main(0, 50000, base))
+	store.Record(main(50000, 1000, base.Add(time.Second)))
+	store.Record(main(51000, 1000, base.Add(2*time.Second)))
+	store.Record(side(0, 80000, base.Add(3*time.Second)))
+	store.Record(side(80000, 100, base.Add(4*time.Second)))
+	store.Record(side(44000, 30000, base.Add(5*time.Second))) // helper lane partial miss: 36k
+	detail, _ := store.Session("s1")
+	s := detail.Summary
+	if s.LostTokens != 36000 || s.SidecarLostTokens != 36000 {
+		t.Errorf("lost=%d sidecar_lost=%d, want 36000/36000", s.LostTokens, s.SidecarLostTokens)
+	}
+	if s.Alerting || s.LostTokensInWindow != 0 {
+		t.Errorf("helper-lane loss must not arm the alert: alerting=%v window=%d", s.Alerting, s.LostTokensInWindow)
+	}
+}
