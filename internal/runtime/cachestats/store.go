@@ -78,7 +78,15 @@ const (
 	// T0CauseExpiry is a request on the same credential that still read nothing:
 	// the cached prefix aged out.
 	T0CauseExpiry T0Cause = "expiry"
+	// T0CauseDetached is a request on the same credential and model whose
+	// whole prompt is far smaller than the lane's cached prefix: a helper call
+	// that carries a different prefix, not the conversation going cold.
+	T0CauseDetached T0Cause = "detached"
 )
+
+// detachedFraction bounds a detached request: its entire prompt (fresh input
+// plus cache write) must be under this share of the lane's high-water mark.
+const detachedFraction = 4
 
 // Regime names the cache pool a session is predominantly writing into.
 type Regime string
@@ -182,8 +190,12 @@ type Request struct {
 	MissedTokens          int64     `json:"missed_tokens"`
 	IsProbe               bool      `json:"is_probe"`
 	// Rebind marks a request served by a different credential than the request
-	// before it in the same session.
+	// before it in the same model lane.
 	Rebind bool `json:"rebind"`
+	// Sidecar marks a request on a model lane other than the session's main
+	// one: a Claude Code helper call that reuses the session id but carries its
+	// own prefix. It is not the main conversation.
+	Sidecar bool `json:"sidecar"`
 	// T0Cause explains a T0 tier and is empty for every other tier.
 	T0Cause T0Cause `json:"t0_cause,omitempty"`
 }
@@ -213,9 +225,13 @@ type Aggregate struct {
 	CacheCreation5mTokens int64   `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int64   `json:"cache_creation_1h_tokens"`
 	LostTokens            int64   `json:"lost_tokens"`
+	// SidecarLostTokens is the share of LostTokens incurred on helper lanes
+	// rather than the session's main conversation.
+	SidecarLostTokens int64 `json:"sidecar_lost_tokens"`
 	// T0Rebinds and T0Expiries split the T0 count by cause; the remainder is
 	// the session's first request.
 	T0Rebinds  int64     `json:"t0_rebinds"`
+	T0Detached int64     `json:"t0_detached"`
 	T0Expiries int64     `json:"t0_expiries"`
 	Sessions   int64     `json:"sessions"`
 	FirstSeen  time.Time `json:"first_seen"`
@@ -267,6 +283,24 @@ type lossEvent struct {
 	tokens int64
 }
 
+// lane is the per-model cache state inside a session. A Claude Code session
+// interleaves models (main thread, subagents, helper calls) and session
+// affinity pins each model to its own credential, so each model carries its
+// own prefix. Tiering, rebinds and loss are judged inside a lane; a switch
+// between lanes is not a cache event.
+type lane struct {
+	model   string
+	authID  string
+	seq     int
+	maxRead int64
+	// first is when the lane saw its first request; the conversation's own
+	// lane starts before any helper lane.
+	first time.Time
+	// prevRead and prevAt describe the lane's immediately preceding request.
+	prevRead int64
+	prevAt   time.Time
+}
+
 type session struct {
 	id       string
 	keyedBy  KeyedBy
@@ -277,7 +311,10 @@ type session struct {
 	first    time.Time
 	last     time.Time
 	seq      int
-	maxRead  int64
+	// maxRead is the high-water mark of the lane the latest request used.
+	maxRead int64
+	// lanes holds per-model state keyed by the normalised model name.
+	lanes map[string]*lane
 	// lastReason is the most recent upstream miss reason, quoted by the alert.
 	lastReason string
 	// losses is the sliding window backing the sustained-loss alert.
@@ -393,10 +430,13 @@ func (s *Store) Record(observation Observation) {
 	}
 
 	entry.seq++
-	prevAuthID := entry.authID
+	ln := entry.laneFor(observation.Model, at)
+	ln.seq++
+	sidecar := len(entry.lanes) > 1 && entry.primaryLane() != ln
+	prevAuthID := ln.authID
 	var gap time.Duration
-	if entry.seq > 1 && !entry.prevAt.IsZero() && at.After(entry.prevAt) {
-		gap = at.Sub(entry.prevAt)
+	if ln.seq > 1 && !ln.prevAt.IsZero() && at.After(ln.prevAt) {
+		gap = at.Sub(ln.prevAt)
 	}
 	signal := observation.Signal
 	if signal == "" {
@@ -406,7 +446,7 @@ func (s *Store) Record(observation Observation) {
 	// A credential change between consecutive requests moves the session to an
 	// account that never saw its prefix, so the resulting cold read is a rebind,
 	// not an expiry.
-	rebind := entry.seq > 1 && authID != "" && entry.authID != "" && authID != entry.authID
+	rebind := ln.seq > 1 && authID != "" && ln.authID != "" && authID != ln.authID
 
 	tier := TierNA
 	if signal != SignalNone {
@@ -414,7 +454,7 @@ func (s *Store) Record(observation Observation) {
 		switch {
 		case observation.CacheReadTokens <= 0:
 			tier = TierT0
-		case observation.CacheReadTokens < entry.maxRead:
+		case observation.CacheReadTokens < ln.maxRead:
 			tier = TierMiss
 		}
 	}
@@ -422,13 +462,18 @@ func (s *Store) Record(observation Observation) {
 	var t0Cause T0Cause
 	if tier == TierT0 {
 		switch {
-		case entry.seq == 1:
+		case ln.seq == 1:
 			t0Cause = T0CauseFirst
 		case rebind:
 			t0Cause = T0CauseRebind
+		case ln.maxRead > 0 && (observation.InputTokens+observation.CacheCreationTokens)*detachedFraction < ln.maxRead:
+			t0Cause = T0CauseDetached
 		default:
 			t0Cause = T0CauseExpiry
 		}
+	}
+	if t0Cause == T0CauseDetached {
+		sidecar = true
 	}
 
 	request := Request{
@@ -447,19 +492,20 @@ func (s *Store) Record(observation Observation) {
 		CacheCreation5mTokens: observation.CacheCreation5mTokens,
 		CacheCreation1hTokens: observation.CacheCreation1hTokens,
 		Tier:                  tier,
-		DeltaRead:             observation.CacheReadTokens - entry.prevRead,
+		DeltaRead:             observation.CacheReadTokens - ln.prevRead,
 		MissReason:            strings.TrimSpace(observation.CacheMissReason),
 		MissedTokens:          observation.CacheMissedTokens,
 		IsProbe:               observation.IsProbe,
 		Rebind:                rebind,
+		Sidecar:               sidecar,
 		T0Cause:               t0Cause,
 	}
 
 	var lost int64
 	if tier == TierMiss {
-		lost = entry.maxRead - observation.CacheReadTokens
+		lost = ln.maxRead - observation.CacheReadTokens
 	}
-	if event, ok := entry.lossEvent(request, tier, t0Cause, prevAuthID, gap, lost); ok {
+	if event, ok := entry.lossEvent(ln, request, tier, t0Cause, prevAuthID, gap, lost); ok {
 		s.appendEventLocked(event)
 	}
 
@@ -475,13 +521,19 @@ func (s *Store) Record(observation Observation) {
 			entry.agg.T0Rebinds++
 		case T0CauseExpiry:
 			entry.agg.T0Expiries++
+		case T0CauseDetached:
+			entry.agg.T0Detached++
 		}
 	case TierMiss:
 		entry.agg.Classified++
 		entry.agg.Misses++
 		if lost > 0 {
 			entry.agg.LostTokens += lost
-			entry.observeLoss(at, lost)
+			if sidecar {
+				entry.agg.SidecarLostTokens += lost
+			} else {
+				entry.observeLoss(at, lost)
+			}
 		}
 	default:
 		entry.agg.Classified++
@@ -501,10 +553,18 @@ func (s *Store) Record(observation Observation) {
 	entry.agg.CacheCreation5mTokens += observation.CacheCreation5mTokens
 	entry.agg.CacheCreation1hTokens += observation.CacheCreation1hTokens
 
-	if observation.CacheReadTokens > entry.maxRead {
-		entry.maxRead = observation.CacheReadTokens
+	if observation.CacheReadTokens > ln.maxRead {
+		ln.maxRead = observation.CacheReadTokens
 	}
-	entry.prevRead = observation.CacheReadTokens
+	// A detached helper call is not the conversation: leave the lane's
+	// previous-request state pointing at the real turn before it.
+	if t0Cause != T0CauseDetached {
+		ln.prevRead = observation.CacheReadTokens
+		ln.prevAt = at
+	}
+	if authID != "" {
+		ln.authID = authID
+	}
 	entry.prevAt = at
 	entry.lastTier = tier
 	entry.lastT0Cause = t0Cause
@@ -514,11 +574,13 @@ func (s *Store) Record(observation Observation) {
 	if entry.first.IsZero() || at.Before(entry.first) {
 		entry.first = at
 	}
-	if request.Model != "" {
-		entry.model = request.Model
-	}
-	if request.AuthID != "" {
-		entry.authID = request.AuthID
+	// The session-level view follows the main lane, so a helper call on another
+	// model neither relabels the row nor moves its warmth bar.
+	if primary := entry.primaryLane(); primary != nil {
+		entry.model = primary.model
+		entry.authID = primary.authID
+		entry.maxRead = primary.maxRead
+		entry.prevRead = primary.prevRead
 	}
 	if request.Provider != "" {
 		entry.provider = request.Provider
@@ -539,6 +601,37 @@ func (s *Store) Record(observation Observation) {
 	entry.requests = append(entry.requests, request)
 	entry.trim(s.cfg.PerSessionRequests)
 	s.evictLocked()
+}
+
+// laneFor returns the per-model lane for model, creating it on first use.
+func (e *session) laneFor(model string, at time.Time) *lane {
+	key := strings.ToLower(strings.TrimSpace(model))
+	if e.lanes == nil {
+		e.lanes = make(map[string]*lane)
+	}
+	ln := e.lanes[key]
+	if ln == nil {
+		ln = &lane{model: strings.TrimSpace(model), first: at}
+		e.lanes[key] = ln
+	}
+	return ln
+}
+
+// primaryLane is the session's main conversation: the lane with the most
+// requests, then the one that started first. Helper calls on other models
+// are sidecars.
+func (e *session) primaryLane() *lane {
+	var best *lane
+	for _, ln := range e.lanes {
+		switch {
+		case best == nil,
+			ln.seq > best.seq,
+			ln.seq == best.seq && ln.first.Before(best.first),
+			ln.seq == best.seq && ln.first.Equal(best.first) && ln.model < best.model:
+			best = ln
+		}
+	}
+	return best
 }
 
 // observeLoss appends one miss loss to the sliding window.
@@ -810,12 +903,12 @@ func (e *session) summary() SessionSummary {
 }
 
 // lossEvent builds the event a classified request produces, if any. It runs
-// before the request's counters are folded into the session, so maxRead and
-// prevRead still describe the state the request was judged against.
-func (e *session) lossEvent(request Request, tier Tier, t0Cause T0Cause, prevAuthID string, gap time.Duration, lost int64) (Event, bool) {
+// before the request's counters are folded into the lane, so the lane's
+// maxRead and prevRead still describe the state the request was judged against.
+func (e *session) lossEvent(ln *lane, request Request, tier Tier, t0Cause T0Cause, prevAuthID string, gap time.Duration, lost int64) (Event, bool) {
 	var kind EventKind
 	switch {
-	case tier == TierT0 && t0Cause != T0CauseFirst:
+	case tier == TierT0 && t0Cause != T0CauseFirst && t0Cause != T0CauseDetached:
 		kind = EventColdRead
 	case tier == TierMiss:
 		kind = EventPartialMiss
@@ -823,12 +916,14 @@ func (e *session) lossEvent(request Request, tier Tier, t0Cause T0Cause, prevAut
 		return Event{}, false
 	}
 	event := e.baseEvent(request, gap)
+	event.PrevReadTokens = ln.prevRead
+	event.MaxReadTokens = ln.maxRead
 	event.Kind = kind
 	event.PrevAuthID = prevAuthID
 	event.T0Cause = t0Cause
 	event.LostTokens = lost
 	if kind == EventColdRead {
-		event.LostTokens = e.maxRead
+		event.LostTokens = ln.maxRead
 	}
 	event.Cause = describeCause(event)
 	return event, true
@@ -920,6 +1015,8 @@ func (a *Aggregate) add(other Aggregate) {
 	a.Rebinds += other.Rebinds
 	a.Classified += other.Classified
 	a.T0Rebinds += other.T0Rebinds
+	a.T0Detached += other.T0Detached
+	a.SidecarLostTokens += other.SidecarLostTokens
 	a.T0Expiries += other.T0Expiries
 	a.InputTokens += other.InputTokens
 	a.PromptTokens += other.PromptTokens
