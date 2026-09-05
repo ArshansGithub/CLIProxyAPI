@@ -239,7 +239,11 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 	subagent1h := isSubagent && helps.ClaudeSubagentRequests1h(incomingHeaders, body)
 	if cpaOwnsCacheControl && fp.ProfileClaudeCodeCLI && (!isSubagent || subagent1h) && !isProbeOrHelper {
 		body = upgradeClaudeCacheControlTTL(body, claudeCacheControlTTL1h)
-	} else if isProbeOrHelper || (isSubagent && !subagent1h) {
+	} else if !confirmedClaudeCode && (isProbeOrHelper || (isSubagent && !subagent1h)) {
+		// Only a cloaked or translated caller is reshaped to the native subagent/probe
+		// wire. A confirmed native client owns its cache_control and is passed through.
+		// Upstream additionally keeps a subagent's explicitly requested 1h ttl, so the
+		// strip now only reaches a cloaked subagent that did not ask for 1h.
 		body = stripClaudeCacheControlTTL(body)
 	}
 
