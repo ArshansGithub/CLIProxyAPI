@@ -394,6 +394,28 @@ func codexClientPresentsIdentity(clientHeaders http.Header) bool {
 	return clientHeaders != nil && strings.TrimSpace(clientHeaders.Get("Originator")) != ""
 }
 
+// normalizeCodexToolSchemasForCaller applies upstream's constant-union tool
+// schema simplification only when the caller is not a real Codex client. A
+// request that presents a Codex identity is passed through unchanged, matching
+// applyCodexCloakingHeaders.
+func normalizeCodexToolSchemasForCaller(body []byte, clientHeaders http.Header) []byte {
+	if codexClientPresentsIdentity(clientHeaders) {
+		return body
+	}
+	return helps.NormalizeCodexToolSchemas(body)
+}
+
+// codexTerminalEmptyIncompleteForCaller reports an empty terminal
+// response.incomplete as an upstream failure only for callers that are not
+// real Codex clients. A native Codex client receives the event unchanged and
+// applies its own retry policy.
+func codexTerminalEmptyIncompleteForCaller(clientHeaders http.Header, payload []byte, outputItems int, sawOutputDelta bool) bool {
+	if codexClientPresentsIdentity(clientHeaders) {
+		return false
+	}
+	return helps.IsCodexTerminalEmptyIncomplete(payload, outputItems, sawOutputDelta)
+}
+
 func normalizeCodexInstructions(body []byte) []byte {
 	instructions := gjson.GetBytes(body, "instructions")
 	if !instructions.Exists() || instructions.Type == gjson.Null {
