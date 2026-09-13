@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	log "github.com/sirupsen/logrus"
 )
 
 var current atomic.Pointer[Policy]
@@ -14,8 +15,19 @@ var current atomic.Pointer[Policy]
 func SetConfig(cfg *config.Config) { SetConfigWithBuiltin(cfg, BuiltinHosts()) }
 
 // SetConfigWithBuiltin is SetConfig with an explicit built-in list (tests).
+//
+// The installed mode is logged every time, at startup and on every reload.
+// Audit mode is fail-open — it lets an unlisted host through with a warning —
+// so it is logged at warn level: running in audit without meaning to is the one
+// way the gate can be silently absent, and it should be visible in the log.
 func SetConfigWithBuiltin(cfg *config.Config, builtin []string) {
-	current.Store(NewPolicy(cfg, builtin))
+	p := NewPolicy(cfg, builtin)
+	current.Store(p)
+	if p.Mode() == config.EgressModeAudit {
+		log.Warnf("egress: mode=audit (fail-open) — %d hosts allowed", p.HostCount())
+	} else {
+		log.Infof("egress: mode=enforce — %d hosts allowed", p.HostCount())
+	}
 }
 
 // Current returns the installed policy. Before SetConfig runs it returns a
