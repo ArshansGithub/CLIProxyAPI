@@ -7,7 +7,7 @@ LDFLAGS      := -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) \
 GOFLAGS_LOCKED := -tags locked
 
 .PHONY: build verify verify-tagless install rollback upstream-fetch refresh-models \
-        patches upstream-audit rebase
+        patches upstream-audit rebase panel-build panel-verify panel-bump
 
 build:
 	@mkdir -p dist
@@ -56,3 +56,13 @@ rebase:
 	git branch -f locked-prev HEAD
 	git rebase --onto $(TAG) $$(git describe --tags --abbrev=0 --match 'v[0-9]*') locked
 	@echo "rebased onto $(TAG); now: make verify"
+
+panel-build:
+	./scripts/panel.sh build
+
+panel-verify:
+	./scripts/panel.sh verify
+
+panel-bump:
+	@[ -n "$(TAG)" ] || { echo "usage: make panel-bump TAG=vX.Y.Z"; exit 1; }
+	./scripts/panel.sh bump $(TAG)
