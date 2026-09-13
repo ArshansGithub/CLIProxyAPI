@@ -12,6 +12,22 @@ git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "tag $TAG not fo
 
 GOVULNCHECK=$(command -v govulncheck || echo "$(go env GOPATH)/bin/govulncheck")
 
+# clip N — pass stdin through, but stop after N lines and say how many were
+# dropped. A bare `head -N` in a report silently hides findings, which is the
+# one thing an audit must not do: a reader cannot tell a short section from a
+# truncated one. Every cap in this script goes through here.
+clip() {
+  local max="$1" tmp total
+  tmp=$(mktemp)
+  cat > "$tmp"
+  total=$(wc -l < "$tmp" | tr -d ' ')
+  head -n "$max" "$tmp"
+  if [ "$total" -gt "$max" ]; then
+    echo "… ($((total - max)) more lines truncated; run the command directly for the rest)"
+  fi
+  rm -f "$tmp"
+}
+
 TMPROOT=$(mktemp -d)
 WT="$TMPROOT/wt"
 trap 'git worktree remove --force "$WT" >/dev/null 2>&1 || true; rm -rf "$TMPROOT"' EXIT
@@ -61,10 +77,12 @@ echo; echo "## 1. Range"
 echo "Commits: $(git rev-list --count "$BASE".."$TAG")"; echo
 git log --format='%an' "$BASE".."$TAG" | sort | uniq -c | sort -rn | sed 's/^/    /'
 echo; echo "## 2. Dependencies"; echo '```diff'
-{ git diff "$BASE" "$TAG" -- go.mod go.sum | head -200; } || true; echo '```'
+{ git diff "$BASE" "$TAG" -- go.mod go.sum | clip 200; } || true; echo '```'
 echo; echo "govulncheck:"; echo '```'
 if [ -x "$GOVULNCHECK" ]; then
-  (cd "$WT" && ("$GOVULNCHECK" ./... 2>&1 || true) | tail -30)
+  # Full output, not a tail: the summary AND every module-level finding must be
+  # in the report. govulncheck output is bounded by the number of findings.
+  (cd "$WT" && ("$GOVULNCHECK" ./... 2>&1 || true))
 else
   echo "govulncheck not found; go install golang.org/x/vuln/cmd/govulncheck@latest"
 fi
@@ -80,11 +98,11 @@ git log --format='%h%x09%G?%x09%an%x09%ae%x09%s' "$BASE".."$TAG" | while IFS=$'\
   echo "- \`$h\` $g $a$mark — $rest"
 done
 echo; echo "## 4. Added-line grep (non-test Go)"; echo '```'
-git diff "$BASE" "$TAG" -- '*.go' ':!*_test.go' | grep -nE '^\+' | grep -E 'os/exec|syscall\.|dlopen|os\.WriteFile|os\.Create\(|func init\(\)|go:embed|base64\.|"(https|wss)://' | head -120 || true
+git diff "$BASE" "$TAG" -- '*.go' ':!*_test.go' | grep -nE '^\+' | grep -E 'os/exec|syscall\.|dlopen|os\.WriteFile|os\.Create\(|func init\(\)|go:embed|base64\.|"(https|wss)://' | clip 120 || true
 echo '```'
 echo; echo "## 5. Watched paths (full diff)"
 for p in internal/managementasset internal/pluginstore internal/pluginhost internal/registry internal/home; do
-  echo; echo "### $p"; echo '```diff'; { git diff "$BASE" "$TAG" -- "$p" | head -400; } || true; echo '```'
+  echo; echo "### $p"; echo '```diff'; { git diff "$BASE" "$TAG" -- "$p" | clip 400; } || true; echo '```'
 done
 echo; echo '### files containing $TOKEN$'; echo '```'
 (cd "$WT" && grep -rln '\$TOKEN\$' --include='*.go' internal sdk 2>/dev/null || true); echo '```'
@@ -103,5 +121,8 @@ echo "- [ ] Panel pin decision recorded (keep / bump via make panel-bump)"
 echo "- [ ] Models snapshot decision recorded (keep / make refresh-models)"
 echo "- [ ] New raw transport sites guarded and allowlisted (or none)"
 echo "- [ ] After install: one Claude Code and one Codex session in egress audit mode showed no unexpected hosts"
+echo; echo "## Notes"
+echo
+echo "One line per [review] commit and per watched-path change: what it does, whether it touches credentials/egress/panel/plugin/registry, accept/reject. Pin decisions and govulncheck follow-ups go here too."
 } > "$OUT"
 echo "wrote $OUT"
