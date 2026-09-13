@@ -101,52 +101,86 @@ func TestClaudeExecutor_ConfirmedNativeSubagentAndProbeKeepCallerTTLAndBetas(t *
 
 // The same shapes from a caller that is not confirmed native Claude Code are
 // still normalised, so cloaked callers keep matching the measured native wire.
-// Upstream v7.2.159 preserves a subagent's explicitly requested 1h ttl, so the
-// control uses the probe shape, which upstream still strips unconditionally.
+// Upstream v7.2.159 (6a73f396) narrowed what "normalised" means for a subagent:
+// one that explicitly asks for 1h now keeps it. Both shapes the strip still
+// reaches are covered here -- a probe, which is reshaped unconditionally, and a
+// subagent that did not ask for 1h.
 func TestClaudeExecutor_UnconfirmedProbeStillStrippedToNativeWire(t *testing.T) {
-	var seenBody []byte
-	var seenHeaders http.Header
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		seenBody, _ = io.ReadAll(r.Body)
-		seenHeaders = r.Header.Clone()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","model":"claude-opus-4-6","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}`))
-	}))
-	defer server.Close()
-
-	executor := NewClaudeExecutor(&config.Config{})
-	auth := &cliproxyauth.Auth{
-		ID: "unconfirmed-subagent",
-		Attributes: map[string]string{
-			"api_key":    "sk-ant-oat-unconfirmed",
-			"base_url":   server.URL,
-			"cloak_mode": "always",
+	tests := []struct {
+		name    string
+		payload string
+		headers http.Header
+	}{
+		{
+			// Probes are reshaped unconditionally in both v7.2.154 and v7.2.159.
+			name: "probe-shaped turn asking for 1h",
+			payload: `{"model":"claude-opus-4-6","max_tokens":1,` +
+				`"system":[{"type":"text","text":"probe-system","cache_control":{"type":"ephemeral","ttl":"1h"}}],` +
+				`"messages":[{"role":"user","content":"quota"}]}`,
+			headers: http.Header{
+				"Anthropic-Beta": {"extended-cache-ttl-2025-04-11"},
+			},
 		},
-		Metadata: claudeOAuthTestMetadata(),
+		{
+			// A subagent that asks for neither a 1h cache_control ttl nor the
+			// extended-cache-ttl beta: ClaudeSubagentRequests1h is false, so the
+			// strip and the beta removal are both still live code for it.
+			name: "subagent that did not ask for 1h",
+			payload: `{"model":"claude-opus-4-6",` +
+				`"system":[{"type":"text","text":"subagent-system","cache_control":{"type":"ephemeral","ttl":"5m"}}],` +
+				`"messages":[{"role":"user","content":[{"type":"text","text":"do the task"}]}]}`,
+			headers: http.Header{
+				"X-Claude-Code-Agent-Id": {"agent-sub-2"},
+			},
+		},
 	}
-	// A probe-shaped turn, not a subagent one: upstream v7.2.159 (6a73f396) now
-	// honours a subagent's explicitly requested 1h ttl, so the subagent shape no
-	// longer proves the strip still runs. Probes are still reshaped
-	// unconditionally, which is exactly what the !confirmedClaudeCode gate leaves
-	// in place for a cloaked caller.
-	payload := []byte(`{"model":"claude-opus-4-6","max_tokens":1,"system":[{"type":"text","text":"probe-system","cache_control":{"type":"ephemeral","ttl":"1h"}}],"messages":[{"role":"user","content":"quota"}]}`)
-	headers := http.Header{
-		"Anthropic-Beta": {"extended-cache-ttl-2025-04-11"},
-	}
-	_, errExecute := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{Model: "claude-opus-4-6", Payload: payload}, cliproxyexecutor.Options{
-		SourceFormat: sdktranslator.FormatClaude,
-		Headers:      headers,
-	})
-	if errExecute != nil {
-		t.Fatalf("Execute() error = %v", errExecute)
-	}
-	for _, block := range gjson.GetBytes(seenBody, "system").Array() {
-		if block.Get("cache_control.ttl").Exists() {
-			t.Fatalf("unconfirmed probe must have ttl stripped, body=%s", seenBody)
-		}
-	}
-	if betas := seenHeaders.Get("Anthropic-Beta"); containsBeta(betas, "extended-cache-ttl-2025-04-11") {
-		t.Fatalf("unconfirmed probe must not carry extended-cache-ttl, got %q", betas)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var seenBody []byte
+			var seenHeaders http.Header
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				seenBody, _ = io.ReadAll(r.Body)
+				seenHeaders = r.Header.Clone()
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":"msg_1","type":"message","model":"claude-opus-4-6","role":"assistant","content":[{"type":"text","text":"ok"}],"usage":{"input_tokens":1,"output_tokens":1}}`))
+			}))
+			defer server.Close()
+
+			executor := NewClaudeExecutor(&config.Config{})
+			// Deliberately NOT cloak_mode:always. Cloaking rebuilds the payload and
+			// strips the ttl itself, which would mask the executor-level strip this
+			// test exists to cover and make every assertion below vacuous.
+			auth := &cliproxyauth.Auth{
+				ID: "unconfirmed-caller",
+				Attributes: map[string]string{
+					"api_key":  "sk-ant-unconfirmed",
+					"base_url": server.URL,
+				},
+			}
+			payload := []byte(tt.payload)
+			_, errExecute := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
+				Model:   "claude-opus-4-6",
+				Payload: payload,
+			}, cliproxyexecutor.Options{
+				SourceFormat: sdktranslator.FormatClaude,
+				Headers:      tt.headers,
+			})
+			if errExecute != nil {
+				t.Fatalf("Execute() error = %v", errExecute)
+			}
+			if len(seenBody) == 0 {
+				t.Fatal("expected the executor to send an upstream request")
+			}
+			for _, block := range gjson.GetBytes(seenBody, "system").Array() {
+				if block.Get("cache_control.ttl").Exists() {
+					t.Fatalf("unconfirmed caller must have ttl stripped, body=%s", seenBody)
+				}
+			}
+			if betas := seenHeaders.Get("Anthropic-Beta"); containsBeta(betas, "extended-cache-ttl-2025-04-11") {
+				t.Fatalf("unconfirmed caller must not carry extended-cache-ttl, got %q", betas)
+			}
+		})
 	}
 }
 
