@@ -59,6 +59,15 @@ func (g *guardedRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 // request; this only lets callers inspect the concrete type underneath.
 func (g *guardedRoundTripper) Unwrap() http.RoundTripper { return g.next }
 
+// CloseIdleConnections forwards to the wrapped round tripper when it supports
+// it. Without this the wrapper would shadow the method, and callers that evict
+// cached round trippers by calling it would silently stop closing pools.
+func (g *guardedRoundTripper) CloseIdleConnections() {
+	if closer, ok := g.next.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
 // RoundTripper wraps a non-*http.Transport round tripper (the uTLS clients).
 func RoundTripper(rt http.RoundTripper, site string) http.RoundTripper {
 	if rt == nil {
