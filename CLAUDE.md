@@ -9,7 +9,7 @@ Upstream's own agent notes are in `AGENTS.md`; they describe the codebase layout
 - Always build and test with `-tags locked` (`make verify`). Also run `make verify-tagless` before committing Go changes.
 - Prefer a `_locked.go` sibling or the egress gate over editing an upstream file. When an upstream edit is unavoidable, keep it to a build-tag line, an early return, or one hook call.
 - Every carried change gets a `docs/fork/PATCHES.yaml` entry; run `make patches` after adding one.
-- Commit subjects use a layer prefix: `lock:` (lockdown/tooling/docs), `feat:` (fork features), `fix:` (mirrors an open upstream PR — see PRs #5444, #5445, #5446 in `docs/fork/PATCHES.yaml`), `pick:` (cherry-picked upstream PR).
+- Commit subjects use a layer prefix: `lock:` (lockdown/tooling/docs), `feat:` (fork features), `fix:` (mirrors an open upstream PR, e.g. #5444; see `docs/fork/PATCHES.yaml` for the current list), `pick:` (cherry-picked upstream PR).
 - Never adopt an upstream tag without `make upstream-audit TAG=` and a completed checklist in `docs/fork/audits/`.
 - Do not add hosts to `internal/egress/providers.go` to make a test pass; understand why the code contacts that host first.
 
