@@ -21,7 +21,7 @@ Read `CLAUDE.md` first. This fork = upstream tag + a linear stack of `lock:`/`fe
 3. `make verify-tagless && make verify`. Fix registration/coverage test failures by understanding the new host or client site, per CLAUDE.md.
 4. `make patches`; commit the regenerated `PATCHES.md`.
 5. `make install`; then set `egress.mode: audit` in `~/.cli-proxy-api/config.yaml`, run one Claude Code session and one Codex session, `grep 'egress audit' ~/.cli-proxy-api/logs/main.log`, and set the mode back to `enforce`.
-6. Tick the last checklist item in the audit report, commit it, tag `<TAG>-locked.1`, `git push origin locked --tags`.
+6. Tick the last checklist item in the audit report, commit it, tag `<TAG>-locked.1`, `git push origin locked && git push origin <TAG>-locked.1`. Push the one tag by name, never `--tags`: that would also push whatever local experimental tags happen to exist.
 7. Report: what conflicted, what was dropped, audit-mode result, the new tag.
 
 ## carry-patch (add | update | drop) [PR]
