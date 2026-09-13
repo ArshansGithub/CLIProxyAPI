@@ -1,0 +1,21 @@
+# Files permitted to construct http.Transport / websocket.Dialer literals,
+# or to assign a .Proxy field, outside the egress guard helpers.
+#
+# A listed file may construct a transport/dialer literal only if it guards
+# the value (egress.GuardTransport / egress.GuardWebsocketDialer /
+# egress.RoundTripper), and may assign a .Proxy field only through
+# egress.WrapProxyFunc.
+#
+# internal/pluginhost/http_bridge.go is allowed to assign .Proxy without a
+# direct egress.GuardTransport call because plugins cannot load under
+# `locked` (Task 8); its .Proxy assignment still goes through
+# egress.WrapProxyFunc.
+sdk/proxyutil/proxy.go
+internal/runtime/executor/antigravity_executor.go
+internal/runtime/executor/helps/utls_client.go
+internal/auth/claude/utls_transport.go
+internal/api/handlers/management/api_tools.go
+internal/runtime/executor/codex_websockets_connection.go
+internal/client/codex/live/sideband.go
+internal/pluginhost/http_bridge.go
+internal/egress/transport.go
