@@ -2,7 +2,7 @@
 # Render docs/fork/PATCHES.md from the commit stack and PATCHES.yaml annotations.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
-BASE=$(git describe --tags --abbrev=0 --match 'v[0-9]*')
+BASE=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-locked.*')
 OUT=docs/fork/PATCHES.md
 YAML=docs/fork/PATCHES.yaml
 
