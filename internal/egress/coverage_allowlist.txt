@@ -10,11 +10,16 @@
 # direct egress.GuardTransport call because plugins cannot load under
 # `locked` (Task 8); its .Proxy assignment still goes through
 # egress.WrapProxyFunc.
+#
+# internal/api/handlers/management/plugin_quota.go builds an http.Client whose
+# Transport is h.apiCallTransport(...), the guarded transport from api_tools.go.
+# It never constructs a transport of its own.
 sdk/proxyutil/proxy.go
 internal/runtime/executor/antigravity_executor.go
 internal/runtime/executor/helps/utls_client.go
 internal/auth/claude/utls_transport.go
 internal/api/handlers/management/api_tools.go
+internal/api/handlers/management/plugin_quota.go
 internal/runtime/executor/codex_websockets_connection.go
 internal/client/codex/live/sideband.go
 internal/pluginhost/http_bridge.go
