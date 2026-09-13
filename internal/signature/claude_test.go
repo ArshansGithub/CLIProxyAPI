@@ -964,6 +964,16 @@ func TestClaudeModelFreeCAISSignature_UsesStructuralGenerationRecognition(t *tes
 			p.blockKind = "tool_use"
 			return p
 		}()},
+		// Channel field 8 is optional. The executor's own model-free fixture
+		// (modelFreeClaudeCAISSignatureForExecutorTest) omits it, so the CAQS
+		// block-kind rule must not judge an envelope that carries no block kind.
+		// This is a documented divergence from upstream 75ce6352; see the #5422
+		// entry in docs/fork/PATCHES.yaml.
+		{"absent block kind", func() claudeModelFreeCAISParts {
+			p := defaultClaudeModelFreeCAISParts()
+			p.blockKind = ""
+			return p
+		}()},
 		{"context id present", func() claudeModelFreeCAISParts {
 			p := defaultClaudeModelFreeCAISParts()
 			p.contextID = "00000000-0000-4000-8000-000000000001"
@@ -1016,12 +1026,38 @@ func TestClaudeModelFreeCAISSignature_UsesStructuralGenerationRecognition(t *tes
 			p.carrierLen = 0
 			return p
 		}()},
+		// Upstream 75ce6352's envelope-version-4 block-kind rule.
+		{"unrecognized block kind", func() claudeModelFreeCAISParts {
+			p := defaultClaudeModelFreeCAISParts()
+			p.blockKind = "redacted"
+			return p
+		}()},
 	}
 	for _, tc := range rejected {
 		signature := tc.parts.encode()
 		if got := DetectSignatureProviderForBlock(signature, SignatureBlockKindClaudeThinking); got == SignatureProviderClaude {
 			t.Errorf("%s: provider = %q, want non-Claude", tc.name, got)
 		}
+	}
+
+	// The CAQS block-kind rule is not specific to the model-free shape: upstream
+	// folds its container-field-5 bytes into the same haveSignatureBytes flag a
+	// model-tagged envelope sets from channel field 5, so the rule runs on both
+	// paths. These two model-tagged envelopes differ only in block kind and pin
+	// that the rule reaches the branch that carries channel-field-5 signature
+	// bytes and a model_text.
+	modelTaggedV4 := func(blockKind string) string {
+		p := defaultClaudeCAISParts("claude-fable-5-1")
+		p.topEnvelope = 4
+		p.channelID = 17
+		p.blockKind = blockKind
+		return p.encode()
+	}
+	if got := DetectSignatureProviderForBlock(modelTaggedV4("thinking"), SignatureBlockKindClaudeThinking); got != SignatureProviderClaude {
+		t.Errorf("model-tagged v4 with a known block kind: provider = %q, want %q", got, SignatureProviderClaude)
+	}
+	if got := DetectSignatureProviderForBlock(modelTaggedV4("redacted"), SignatureBlockKindClaudeThinking); got == SignatureProviderClaude {
+		t.Errorf("model-tagged v4 with an unrecognized block kind: provider = %q, want non-Claude", got)
 	}
 }
 
