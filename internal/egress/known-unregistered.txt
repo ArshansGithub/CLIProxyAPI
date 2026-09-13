@@ -1,0 +1,9 @@
+# Hosts that appear as literals in scanned packages but are deliberately NOT
+# admitted by the egress policy. Format: host  # reason
+github.com                     # plugin store / release feeds; locked build never installs plugins
+api.github.com                 # panel and plugin release lookups; compiled out under locked
+raw.githubusercontent.com      # remote model catalog (internal/registry updaters); locked build uses the embedded snapshot
+models.router-for.me           # remote model catalog mirror (internal/registry updaters); same
+cpamc.router-for.me            # unverified management-panel fallback host; compiled out under locked
+antigravity-hub-auto-updater-974169037036.us-central1.run.app  # antigravity version-manifest host; code has a built-in fallback, not a provider API
+...                             # not a host: doc-comment example in internal/runtime/executor/xai_executor_request.go showing a JSON field rewrite ("https://...")
