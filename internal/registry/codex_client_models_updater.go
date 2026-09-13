@@ -12,17 +12,16 @@ import (
 
 const maxCodexClientModelsSize = 8 << 20
 
-var codexClientModelsURLs = []string{
-	"https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/codex_client_models.json",
-	"https://models.router-for.me/codex_client_models.json",
-}
-
 var codexClientModelsUpdaterOnce sync.Once
 
 // StartCodexClientModelsUpdater starts a background updater that fetches the
 // Codex client model catalog immediately and then refreshes it every 3 hours.
 // Safe to call multiple times; only one updater will run.
 func StartCodexClientModelsUpdater(ctx context.Context) {
+	if !remoteModelRefreshEnabled {
+		log.Info("locked build: remote model catalog refresh disabled; using embedded snapshot")
+		return
+	}
 	codexClientModelsUpdaterOnce.Do(func() {
 		go runCodexClientModelsUpdater(ctx)
 	})

@@ -1,0 +1,5 @@
+source=https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/
+models.json.sha256=86c56c00893b3430a1b604a7a5367471f198bed318b9e37be784d52049231d00
+codex_client_models.json.sha256=428277c965eb5bab56a7b569048233aa6b876bb004e055ec9ea2a9061217d0f5
+snapshot-from=upstream v7.2.154 embedded catalogs
+reviewed=2026-09-13

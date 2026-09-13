@@ -19,11 +19,6 @@ const (
 	modelsRefreshInterval = 3 * time.Hour
 )
 
-var modelsURLs = []string{
-	"https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/models.json",
-	"https://models.router-for.me/models.json",
-}
-
 //go:embed models/models.json
 var embeddedModelsJSON []byte
 
@@ -75,6 +70,10 @@ func init() {
 // immediately on startup and then refreshes the model catalog every 3 hours.
 // Safe to call multiple times; only one updater will run.
 func StartModelsUpdater(ctx context.Context) {
+	if !remoteModelRefreshEnabled {
+		log.Info("locked build: remote model catalog refresh disabled; using embedded snapshot")
+		return
+	}
 	updaterOnce.Do(func() {
 		go runModelsUpdater(ctx)
 	})
