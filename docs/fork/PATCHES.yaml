@@ -1,0 +1,198 @@
+# Hand-maintained register of carried patches. `make patches` renders PATCHES.md.
+#
+# One entry per fork feature, per cherry-picked upstream PR, or per standalone
+# commit. Every non-merge commit above the base upstream tag must be matched by
+# exactly one entry; `make patches` prints the count of unannotated rows and it
+# must stay at 0.
+#
+# Fields:
+#   subject:    one exact commit subject
+#   subjects:   a list of exact commit subjects (use instead of `subject`)
+#   prefixes:   a list of subject prefixes this entry claims (optional).
+#               An exact `subject`/`subjects` match always wins over a prefix,
+#               so a single commit can be carved out of a prefix group.
+#   layer:      lock | feat | fix | pick
+#   upstream_pr: PR number on router-for-me/CLIProxyAPI, or null
+#   drop:       the condition under which the patch leaves the stack
+#   note:       free text (optional)
+
+# ---------------------------------------------------------------- picks -----
+
+- subjects:
+    - "fix(executor): recover truncated streamed tool calls"
+    - "fix(executor): keep synthesized streams alive"
+    - "fix(executor): bootstrap buffered tool streams"
+    - "fix(executor): stabilize synthesized stream metadata"
+    - "fix(executor): validate buffered replies before streaming"
+    - "fix(executor): preserve synthesized response tier"
+    - "fix(executor): preserve synthesized response metadata"
+    - "fix(executor): validate choices and keep tool call metadata"
+    - "fix(executor): validate tool calls and keep annotations"
+    - "fix(executor): preserve synthesized audio output"
+    - "fix(executor): require valid bodies and tool arguments"
+  layer: pick
+  upstream_pr: 5338
+  drop: "upstream merges #5338 (or ships an equivalent synthesized-stream fix)"
+  note: >-
+    kantar0's open PR, carried whole. The eleven commits are the same objects as
+    the PR head, so a rebase that lands after the merge drops them cleanly.
+
+- subjects:
+    - "fix(claude): recognize model-free native thinking signatures"
+    - "fix(claude): warn on unknown signature generations"
+    - "fix(claude): aggregate stale-generation warnings"
+    - "refactor(claude): classify unknown CAIS generations via exported helper"
+    - "fix(signature): validate model-free CAIS carrier before unknown-generation classification"
+    - "fix(claude): warn on unknown CAIS generations only for anchored drop decisions"
+  layer: pick
+  upstream_pr: 5422
+  drop: "upstream merges #5422"
+  note: >-
+    realies' open CAIS-signature PR. Six of its eight commits are carried; the
+    two later signature-container commits were not picked.
+
+- subjects:
+    - "fix(openai): preserve local prewarm context during compact replay"
+    - "fix(openai): reset upstream transport after local prewarm"
+  layer: pick
+  upstream_pr: 5566
+  drop: "upstream merges #5566"
+  note: >-
+    omsd512-W's open PR. Without it a Codex Desktop subagent spawned after the
+    parent thread compacted loses every tool.
+
+- subject: "test(openai): subagent spawned after parent compaction keeps prewarm tools"
+  layer: fix
+  upstream_pr: 5566
+  drop: "drop together with the #5566 pick above"
+  note: "Fork-authored regression test for the behaviour #5566 fixes."
+
+# -------------------------------------------------- fork features (own PRs) --
+
+- prefixes:
+    - "keepalive:"
+  subjects:
+    - "config: add claude-code.cache-keepalive block"
+    - "config: add the 5-minute keepalive probe keys"
+    - "docs: describe the Claude Code prompt-cache keepalive feature"
+    - "docs: explain why 5m sessions are worth probing on Fable 5.1"
+  layer: feat
+  upstream_pr: 5446
+  drop: "upstream merges #5446 or ships an equivalent agent-aware keepalive"
+  note: >-
+    Agent-aware prompt-cache keepalive: the probe scheduler, its session keying
+    and liveness sources, the 5m/1h tier split, and the config and docs blocks
+    that belong to it.
+
+- subjects:
+    - "cachestats: bounded per-session prompt-cache statistics store"
+    - "cache-stats: management API, config example and docs"
+    - "cache-stats: cover every provider, attribute rebinds, alert on sustained loss"
+    - "cache-stats: address session keys that contain slashes"
+    - "config: cover usage-cache-stats defaults, overrides and validation"
+    - "docs: document provider signals, session keying, T0 causes and the loss alert"
+  layer: feat
+  upstream_pr: 5445
+  drop: "upstream merges #5445"
+  note: "The per-session prompt-cache statistics store and its management API, as submitted."
+
+- subject: "usage: capture the 5m/1h cache split, cache_miss_reason and session id"
+  layer: feat
+  upstream_pr: 5445
+  drop: "upstream merges #5445"
+  note: "Usage-record plumbing the statistics store reads from; part of #5445."
+
+- subject: "tui: provider column, provider filter, cache-signal awareness and loss alerts"
+  layer: feat
+  upstream_pr: 5445
+  drop: "upstream merges #5445"
+  note: "The TUI Cache tab; part of #5445."
+
+- subjects:
+    - "cache-stats: record loss events with causes and serve a built-in /cache.html watch page"
+    - "cache-stats: judge cache tiers per model lane and mark helper calls as sidecars"
+  layer: feat
+  upstream_pr: null
+  drop: "fold into #5445 on the next push to that PR, or keep as a fork extension"
+  note: "Fork-local extensions landed after #5445 was opened; not in the PR."
+
+- prefixes:
+    - "cache-watch:"
+  layer: feat
+  upstream_pr: null
+  drop: "drop together with the /cache.html watch page above"
+  note: "Presentation fixes for the built-in watch page."
+
+- subjects:
+    - "fix(claude): treat the pinned Claude Code version as a floor, not a lock"
+    - "fix(claude): correct the version-drift warning wording"
+  layer: fix
+  upstream_pr: 5444
+  drop: "upstream merges #5444"
+
+# ------------------------------------------------ standalone fork commits ----
+
+- subjects:
+    - "fix(executor): normalize bare-string Claude message content to block form"
+    - 'Revert "fix(executor): normalize bare-string Claude message content to block form"'
+  layer: fix
+  upstream_pr: null
+  drop: "both commits cancel; drop together on next rebase"
+
+- subject: "auth: retry the same credential on upstream 529 before failing over"
+  layer: feat
+  upstream_pr: null
+  drop: "upstream retries an overloaded credential before failing over"
+  note: >-
+    Failing over on an Anthropic 529 moves the session to a credential that has
+    never seen its cache prefix, costing a full cache rewrite.
+
+- subject: "codex: drop attachment metadata the public Responses API rejects on api-key upstreams"
+  layer: fix
+  upstream_pr: null
+  drop: "upstream strips internal_chat_message_metadata_passthrough for api-key Responses upstreams"
+
+- subject: "claude: never reshape a confirmed native client's cache ttl or betas"
+  layer: fix
+  upstream_pr: null
+  drop: "upstream stops rewriting the wire of a confirmed native Claude Code client"
+  note: "Re-asserts this fork's passthrough contract against upstream 2.1.258 reshaping."
+
+- subject: "codex: pass a caller's own Codex identity through instead of cloaking it"
+  layer: fix
+  upstream_pr: null
+  drop: "upstream stops forcing its built-in codex-tui identity onto a real Codex CLI"
+
+- subject: "codex: keep native Codex requests unreshaped after the v7.2.154 merge"
+  layer: fix
+  upstream_pr: null
+  drop: "re-evaluate at each rebase; the guard tracks upstream's Codex reshaping"
+  note: "Companion to the Codex identity passthrough, for reshaping added in v7.2.154."
+
+- subjects:
+    - "docs: build-from-source section for the cache-tooling branch"
+    - "docs: note the Homebrew DefaultConfigPath ldflag"
+  layer: feat
+  upstream_pr: null
+  drop: "never while this fork is built and installed from source"
+
+- subject: "fix(docs): remove Infistar.ai sponsorship details from README files"
+  layer: pick
+  upstream_pr: null
+  drop: "drops out on any rebase onto v7.2.155 or later; it is already upstream"
+  note: >-
+    Upstream commit d198db54, first released in v7.2.155 and pulled forward into
+    this stack early. Not a fork change: no PR, nothing to carry after the rebase.
+
+# ----------------------------------------------------------- locked build ---
+
+- prefixes:
+    - "lock:"
+  layer: lock
+  upstream_pr: null
+  drop: "never"
+  note: >-
+    The privacy-locked build: spec and plan, the Makefile and install script,
+    lockedbuild.Enabled, the egress policy and its enforcement at every
+    transport and dialer, the embedded panel, the plugin refusals and the
+    embedded model snapshot. These are the reason the fork exists.
