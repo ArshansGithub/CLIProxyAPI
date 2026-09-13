@@ -54,3 +54,35 @@ func TestRoundTripperWrapperRefuses(t *testing.T) {
 		t.Fatalf("want ErrNotPermitted, got %v", err)
 	}
 }
+
+type closeRecordingRoundTripper struct {
+	closed bool
+}
+
+func (c *closeRecordingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("not used")
+}
+
+func (c *closeRecordingRoundTripper) CloseIdleConnections() { c.closed = true }
+
+func TestRoundTripperPassesThroughCloseIdleConnections(t *testing.T) {
+	inner := &closeRecordingRoundTripper{}
+	rt := RoundTripper(inner, "test")
+	closer, ok := rt.(interface{ CloseIdleConnections() })
+	if !ok {
+		t.Fatal("guarded round tripper must expose CloseIdleConnections so pool eviction still closes pools")
+	}
+	closer.CloseIdleConnections()
+	if !inner.closed {
+		t.Fatal("CloseIdleConnections did not reach the wrapped round tripper")
+	}
+}
+
+func TestRoundTripperCloseIdleConnectionsIgnoresRoundTrippersWithout(t *testing.T) {
+	rt := RoundTripper(roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, nil }), "test")
+	rt.(interface{ CloseIdleConnections() }).CloseIdleConnections()
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }

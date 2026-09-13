@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/httpwire"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
@@ -376,7 +377,10 @@ func (c *hostHTTPClient) newHTTPClientForRequest(ctx context.Context, cfg *confi
 		// Configure dynamic proxy function:
 		// For plain HTTP, keep origProxyFunc so standard library forwards HTTP requests to the proxy.
 		// For HTTPS, return nil so that DialTLSContext is always called to perform TLS wrapping.
-		baseTransport.Proxy = func(r *http.Request) (*url.URL, error) {
+		// The replacement runs under the egress gate: returning nil for HTTPS
+		// would otherwise skip the check that origProxyFunc carried, and the
+		// DialTLSContext path below does not reach it when a proxy is configured.
+		baseTransport.Proxy = egress.WrapProxyFunc(func(r *http.Request) (*url.URL, error) {
 			if r != nil && r.URL != nil && r.URL.Scheme == "http" {
 				if origProxyFunc != nil {
 					return origProxyFunc(r)
@@ -384,7 +388,7 @@ func (c *hostHTTPClient) newHTTPClientForRequest(ctx context.Context, cfg *confi
 				return nil, nil
 			}
 			return nil, nil
-		}
+		}, "pluginhost.wireProfile")
 
 		baseTransport.DialTLSContext = func(dialCtx context.Context, network, addr string) (net.Conn, error) {
 			currentReq := reqHolder.get()
