@@ -1,3 +1,5 @@
+//go:build !locked
+
 package managementasset
 
 import (
@@ -140,34 +142,7 @@ type releaseResponse struct {
 }
 
 // StaticDir resolves the directory that stores the management control panel asset.
-func StaticDir(configFilePath string) string {
-	if override := strings.TrimSpace(os.Getenv("MANAGEMENT_STATIC_PATH")); override != "" {
-		cleaned := filepath.Clean(override)
-		if strings.EqualFold(filepath.Base(cleaned), managementAssetName) {
-			return filepath.Dir(cleaned)
-		}
-		return cleaned
-	}
-
-	if writable := util.WritablePath(); writable != "" {
-		return filepath.Join(writable, "static")
-	}
-
-	configFilePath = strings.TrimSpace(configFilePath)
-	if configFilePath == "" {
-		return ""
-	}
-
-	base := filepath.Dir(configFilePath)
-	fileInfo, err := os.Stat(configFilePath)
-	if err == nil {
-		if fileInfo.IsDir() {
-			base = configFilePath
-		}
-	}
-
-	return filepath.Join(base, "static")
-}
+func StaticDir(configFilePath string) string { return staticDirFor(configFilePath) }
 
 // FilePath resolves the absolute path to the management control panel asset.
 func FilePath(configFilePath string) string {
