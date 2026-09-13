@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"golang.org/x/net/proxy"
 )
 
@@ -94,16 +95,16 @@ func ValidRequestProxy(raw string) bool {
 
 func cloneDefaultTransport() *http.Transport {
 	if transport, ok := http.DefaultTransport.(*http.Transport); ok && transport != nil {
-		return transport.Clone()
+		return egress.GuardTransport(transport.Clone())
 	}
-	return &http.Transport{}
+	return egress.GuardTransport(&http.Transport{})
 }
 
 // NewDirectTransport returns a transport that bypasses environment proxies.
 func NewDirectTransport() *http.Transport {
 	clone := cloneDefaultTransport()
 	clone.Proxy = nil
-	return clone
+	return egress.GuardTransport(clone)
 }
 
 // socksForwardDialer dials the SOCKS5 proxy itself. It mirrors net/http's
@@ -143,17 +144,17 @@ func BuildHTTPTransport(raw string) (*http.Transport, Mode, error) {
 			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, addr)
 			}
-			return transport, setting.Mode, nil
+			return egress.GuardTransport(transport), setting.Mode, nil
 		}
 		if setting.URL.Scheme == "https" {
 			transport := cloneDefaultTransport()
 			transport.Proxy = http.ProxyURL(setting.URL)
 			transport.DialTLSContext = buildHTTPSProxyDialTLSContext(setting.URL, nil, transport.TLSHandshakeTimeout, transport.DialContext)
-			return transport, setting.Mode, nil
+			return egress.GuardTransport(transport), setting.Mode, nil
 		}
 		transport := cloneDefaultTransport()
 		transport.Proxy = http.ProxyURL(setting.URL)
-		return transport, setting.Mode, nil
+		return egress.GuardTransport(transport), setting.Mode, nil
 	default:
 		return nil, setting.Mode, nil
 	}
