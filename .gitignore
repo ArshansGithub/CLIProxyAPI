@@ -69,3 +69,6 @@ docker-compose.override.yml
 
 # Local build output from AGENTS.md build recipes
 cliproxyapi-patched
+
+# fork: tracked documentation for the locked build (spec, patches, audits)
+!docs/fork/
