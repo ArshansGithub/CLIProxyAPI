@@ -31,3 +31,22 @@ func TestEgressConfigNormalizesExtraAllow(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizeEgressHost(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"[::1]", "::1"},
+		{"[::1]:443", "::1"},
+		{"::1", "::1"},
+		{"Example.COM.", "example.com"},
+		{"api.example.com:443", "api.example.com"},
+		{"", ""},
+	}
+	for _, tc := range cases {
+		if got := NormalizeEgressHost(tc.in); got != tc.want {
+			t.Errorf("NormalizeEgressHost(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
