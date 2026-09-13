@@ -58,5 +58,8 @@ func NormalizeEgressHost(raw string) string {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = host[1 : len(host)-1]
+	}
 	return strings.TrimSuffix(host, ".")
 }
