@@ -2024,8 +2024,16 @@ func TestNewProxyAwareWebsocketDialerDirectDisablesProxy(t *testing.T) {
 		&cliproxyauth.Auth{ProxyURL: "direct"},
 	)
 
-	if dialer.Proxy != nil {
-		t.Fatal("expected websocket proxy function to be nil for direct mode")
+	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
+	}
+	proxyURL, errProxy := dialer.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected direct mode to select no proxy, got %v", proxyURL)
 	}
 }
 

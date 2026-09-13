@@ -14,6 +14,7 @@ import (
 	tls "github.com/refraction-networking/utls"
 	internalcache "github.com/router-for-me/CLIProxyAPI/v7/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/httpwire"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
@@ -283,8 +284,10 @@ func claudeCodeRequestHeaderOrder(_, requestTarget string) []string {
 }
 
 func cachedClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
+	// The guard is built inside the cache loader so one proxy key keeps one
+	// round tripper identity, which is what connection reuse depends on.
 	return claudeCodeRoundTripperCache.GetOrAdd(proxyURL, func() http.RoundTripper {
-		return newClaudeCodeRoundTripper(proxyURL)
+		return egress.RoundTripper(newClaudeCodeRoundTripper(proxyURL), "helps.claudeCodeRoundTripper")
 	})
 }
 
@@ -302,7 +305,7 @@ func newClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
 		}
 	}
 
-	transport := &http.Transport{
+	transport := egress.GuardTransport(&http.Transport{
 		ForceAttemptHTTP2: false,
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			var (
@@ -340,7 +343,7 @@ func newClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
 			}
 			return httpwire.NewOrderedRequestConn(tlsConn, claudeCodeRequestHeaderOrder), nil
 		},
-	}
+	})
 	return transport
 }
 

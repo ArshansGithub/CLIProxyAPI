@@ -12,6 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
@@ -181,7 +182,7 @@ func readCodexWebsocketMessage(ctx context.Context, sess *codexWebsocketSession,
 }
 
 func newProxyAwareWebsocketDialer(cfg *config.Config, auth *cliproxyauth.Auth) *websocket.Dialer {
-	dialer := &websocket.Dialer{
+	dialer := egress.GuardWebsocketDialer(&websocket.Dialer{
 		Proxy:             http.ProxyFromEnvironment,
 		HandshakeTimeout:  codexResponsesWebsocketHandshakeTO,
 		EnableCompression: true,
@@ -189,7 +190,7 @@ func newProxyAwareWebsocketDialer(cfg *config.Config, auth *cliproxyauth.Auth) *
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-	}
+	}, "codex.websocket")
 
 	proxyURL := ""
 	if auth != nil {
@@ -210,7 +211,7 @@ func newProxyAwareWebsocketDialer(cfg *config.Config, auth *cliproxyauth.Auth) *
 
 	switch setting.Mode {
 	case proxyutil.ModeDirect:
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.websocket")
 		return dialer
 	case proxyutil.ModeProxy:
 	default:
@@ -230,12 +231,12 @@ func newProxyAwareWebsocketDialer(cfg *config.Config, auth *cliproxyauth.Auth) *
 			log.Errorf("codex websockets executor: create SOCKS5 dialer failed: %v", errSOCKS5)
 			return dialer
 		}
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.websocket")
 		dialer.NetDialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 			return socksDialer.Dial(network, addr)
 		}
 	case "http", "https":
-		dialer.Proxy = http.ProxyURL(setting.URL)
+		dialer.Proxy = egress.WrapProxyFunc(http.ProxyURL(setting.URL), "codex.websocket")
 	default:
 		log.Errorf("codex websockets executor: unsupported proxy scheme: %s", setting.URL.Scheme)
 	}

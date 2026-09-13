@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
@@ -117,6 +118,10 @@ func (h *Handler) APICall(c *gin.Context) {
 	parsedURL, errParseURL := url.Parse(urlStr)
 	if errParseURL != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid url"})
+		return
+	}
+	if errEgress := egress.CheckURL(parsedURL, "management.APICall"); errEgress != nil {
+		c.JSON(http.StatusForbidden, gin.H{"error": errEgress.Error()})
 		return
 	}
 
@@ -518,11 +523,11 @@ func (h *Handler) apiCallTransport(auth *coreauth.Auth, requestProxyURL string) 
 func directAPICallTransport() http.RoundTripper {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok || transport == nil {
-		return &http.Transport{Proxy: nil}
+		return egress.GuardTransport(&http.Transport{Proxy: nil})
 	}
 	clone := transport.Clone()
 	clone.Proxy = nil
-	return clone
+	return egress.GuardTransport(clone)
 }
 
 type apiKeyConfigEntry interface {

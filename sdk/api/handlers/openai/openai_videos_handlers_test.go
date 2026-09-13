@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
 	apihandlers "github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
@@ -544,8 +545,16 @@ func TestWriteVideoContentFromURLUsesPinnedAuthProxy(t *testing.T) {
 	if !ok {
 		t.Fatalf("transport type = %T, want *http.Transport", client.Transport)
 	}
-	if transport.Proxy != nil {
-		t.Fatal("expected pinned auth direct proxy to bypass global proxy")
+	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
+	}
+	proxyURL, errProxy := transport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected pinned auth direct proxy to select no proxy, got %v", proxyURL)
 	}
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d body=%s", resp.Code, http.StatusOK, resp.Body.String())
@@ -554,6 +563,8 @@ func TestWriteVideoContentFromURLUsesPinnedAuthProxy(t *testing.T) {
 
 func TestWriteVideoContentFromURLFallsBackToGlobalProxy(t *testing.T) {
 	resetVideoAuthBindingsForTest(t)
+	// The gate runs on every request; this destination is inspected, never dialled.
+	egress.SetConfigWithBuiltin(nil, []string{"example.com"})
 
 	base := apihandlers.NewBaseAPIHandlers(&sdkconfig.SDKConfig{ProxyURL: "http://global-proxy.example.com:8080"}, nil)
 	handler := NewOpenAIAPIHandler(base)
