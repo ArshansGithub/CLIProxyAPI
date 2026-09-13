@@ -396,7 +396,7 @@ func newClaudeCodeRoundTripperForDialerAndRoots(dialer proxy.Dialer, roots *x509
 			}
 			return httpwire.NewOrderedRequestConn(tlsConn, claudeCodeRequestHeaderOrder), nil
 		},
-	})
+	}, "helps.claudeCodeTransport")
 	return transport
 }
 
