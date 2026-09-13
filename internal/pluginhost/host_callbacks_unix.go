@@ -1,4 +1,4 @@
-//go:build cgo && (linux || darwin || freebsd)
+//go:build cgo && (linux || darwin || freebsd) && !locked
 
 package pluginhost
 
