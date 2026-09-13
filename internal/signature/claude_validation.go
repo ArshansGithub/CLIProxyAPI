@@ -973,7 +973,7 @@ func InspectClaudeCAISSignature(rawSignature string) (*ClaudeCAISSignatureInfo, 
 		return nil, &claudeCAISUnknownGenerationError{identifier: "envelope version", value: info.EnvelopeVersion}
 	case !isKnownClaudeCAISIdentifier(knownClaudeCAISChannelIDs[:], info.ChannelID):
 		return nil, &claudeCAISUnknownGenerationError{identifier: "channel_id", value: info.ChannelID}
-	case info.EnvelopeVersion >= 4 && !isKnownClaudeCAQSBlockKind(info.BlockKind):
+	case info.EnvelopeVersion >= 4 && info.BlockKind != "" && !isKnownClaudeCAQSBlockKind(info.BlockKind):
 		return nil, fmt.Errorf("invalid Claude CAQS signature: expected a known Claude block kind, got %q", info.BlockKind)
 	}
 
@@ -990,7 +990,8 @@ func InspectClaudeCAISSignature(rawSignature string) (*ClaudeCAISSignatureInfo, 
 // exercises "tool_use", which is an ordinary Claude block type rather than a
 // bumped generation value. Rejecting a block kind drops the whole thinking
 // block, so this list is the union: garbage kinds are still refused, but a real
-// Claude block name never costs conversation history.
+// Claude block name never costs conversation history. Channel field 8 stays
+// optional, so an envelope that carries no block kind at all is not judged here.
 var knownClaudeCAQSBlockKinds = [...]string{"thinking", "narration", "tool_use"}
 
 func isKnownClaudeCAQSBlockKind(kind string) bool {
