@@ -1,3 +1,5 @@
+//go:build !locked
+
 package management
 
 import (

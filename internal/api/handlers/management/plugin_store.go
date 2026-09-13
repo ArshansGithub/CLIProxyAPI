@@ -16,6 +16,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/htmlsanitize"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/lockedbuild"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginstore"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
@@ -118,6 +119,10 @@ type sourcedPlugin struct {
 }
 
 func (h *Handler) ListPluginStore(c *gin.Context) {
+	if lockedbuild.Enabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "plugin store is disabled in the locked build"})
+		return
+	}
 	pluginsEnabled, pluginsDir, proxyURL, sourceConfigs, storeAuth, configs, host := h.pluginStoreSnapshot()
 	resolvedPluginsDir, errResolvePluginsDir := config.ResolvePluginsDir(pluginsDir)
 	if errResolvePluginsDir != nil {
@@ -219,6 +224,10 @@ func (h *Handler) ListPluginStore(c *gin.Context) {
 }
 
 func (h *Handler) InstallPluginFromStore(c *gin.Context) {
+	if lockedbuild.Enabled {
+		c.JSON(http.StatusForbidden, gin.H{"error": "plugin store is disabled in the locked build"})
+		return
+	}
 	h.installPluginFromStore(c, runtime.GOOS, runtime.GOARCH)
 }
 
