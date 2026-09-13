@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 TAG="${1:?usage: upstream-audit.sh vX.Y.Z}"
-BASE=$(git describe --tags --abbrev=0 --match 'v[0-9]*')
+BASE=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-locked.*')
 OUT="docs/fork/audits/$TAG.md"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "tag $TAG not found; run make upstream-fetch"; exit 1; }
 

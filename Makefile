@@ -1,5 +1,9 @@
 SHELL := /bin/bash
-TAG_UPSTREAM ?= $(shell git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null)
+# The fork tags its own releases <upstream>-locked.N at the tip of `locked`, and
+# those match 'v[0-9]*' too. Without --exclude, git describe would resolve the
+# fork's own release tag as the base and every rebase range would be empty.
+DESCRIBE_BASE := git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-locked.*'
+TAG_UPSTREAM ?= $(shell $(DESCRIBE_BASE) 2>/dev/null)
 COMMIT       := $(shell git rev-parse --short HEAD)
 VERSION      ?= $(TAG_UPSTREAM)-locked.dev
 LDFLAGS      := -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) \
@@ -53,8 +57,23 @@ rebase:
 	@! grep '^- \[ \]' docs/fork/audits/$(TAG).md | grep -v '^- \[ \] After install:' \
 	  || { echo "audit checklist for $(TAG) has unticked items (post-install items are exempt)"; exit 1; }
 	git config rerere.enabled true
+	@BASE=$$($(DESCRIBE_BASE)); \
+	  N=$$(git rev-list --count $$BASE..locked); \
+	  echo "base upstream tag: $$BASE ($$N fork commits to replay)"; \
+	  [ "$$N" -gt 0 ] || { \
+	    echo "refusing to rebase: BASE=$$BASE already contains every commit on locked,"; \
+	    echo "so the replay range is empty and the rebase would move locked onto bare upstream."; \
+	    echo "Check that BASE is an upstream tag and not one of the fork's own *-locked.* tags."; \
+	    exit 1; }
 	git branch -f locked-prev HEAD
-	git rebase --onto $(TAG) $$(git describe --tags --abbrev=0 --match 'v[0-9]*') locked
+	@BASE=$$($(DESCRIBE_BASE)); set -x; git rebase --onto $(TAG) $$BASE locked
+	@N=$$(git log --format=%s $(TAG)..locked | grep -c '^lock:' || true); \
+	  if [ "$$N" -gt 0 ]; then \
+	    echo "rebased onto $(TAG); $$N lock: commits replayed"; \
+	  else \
+	    echo "*** WARNING: no lock: commits on locked after the rebase onto $(TAG)."; \
+	    echo "*** The lockdown stack looks dropped. Recover with: git reset --hard locked-prev"; \
+	  fi
 	@echo "rebased onto $(TAG); now: make verify"
 
 panel-build:
