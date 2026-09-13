@@ -6,7 +6,7 @@ LDFLAGS      := -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) \
                 -X main.DefaultConfigPath=/opt/homebrew/etc/cliproxyapi.conf
 GOFLAGS_LOCKED := -tags locked
 
-.PHONY: build verify verify-tagless install rollback upstream-fetch
+.PHONY: build verify verify-tagless install rollback upstream-fetch refresh-models
 
 build:
 	@mkdir -p dist
@@ -32,3 +32,6 @@ rollback:
 upstream-fetch:
 	git fetch upstream --tags --no-write-fetch-head 'refs/tags/*:refs/tags/*'
 	@echo "latest upstream tag: $$(git tag --sort=-v:refname | head -1)"
+
+refresh-models:
+	./scripts/refresh-models.sh
