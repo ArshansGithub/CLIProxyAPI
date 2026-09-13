@@ -55,7 +55,7 @@ make upstream-fetch
 make upstream-audit TAG=v7.2.170     # writes docs/fork/audits/v7.2.170.md — read it
 make rebase TAG=v7.2.170             # refuses without a completed audit
 make verify && make install
-git tag v7.2.170-locked.1 && git push origin locked --tags
+git tag v7.2.170-locked.1 && git push origin locked && git push origin v7.2.170-locked.1
 ```
 `make rebase` refuses to run until every item on the audit checklist in
 `docs/fork/audits/<TAG>.md` is ticked, except the item that can only be confirmed after
