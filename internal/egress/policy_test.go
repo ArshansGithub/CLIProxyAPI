@@ -66,3 +66,27 @@ func TestNoPolicyInstalledRefusesInEnforce(t *testing.T) {
 		t.Fatal("with no policy installed, enforce must refuse")
 	}
 }
+
+func TestPolicyHostCountCoversLoopbackBuiltinAndExtra(t *testing.T) {
+	// 3 loopback (127.0.0.1, ::1, localhost) + 2 builtin + 1 configured base URL
+	// hostname (openrouter.ai, from testConfig) + 2 extra-allow.
+	p := NewPolicy(
+		testConfig("enforce", "Extra.Example.com", "second.example.com:443"),
+		[]string{"api.anthropic.com", "api.openai.com"},
+	)
+	if got, want := p.HostCount(), 8; got != want {
+		t.Fatalf("HostCount() = %d, want %d", got, want)
+	}
+
+	// Duplicates and empties collapse: a builtin repeated in extra-allow, in a
+	// different case and with a port, is still one host.
+	dup := NewPolicy(testConfig("enforce", "API.Anthropic.com:443", ""), []string{"api.anthropic.com"})
+	if got, want := dup.HostCount(), 5; got != want { // 3 loopback + anthropic + openrouter.ai
+		t.Fatalf("HostCount() with duplicates = %d, want %d", got, want)
+	}
+
+	// No config at all is loopback only.
+	if got, want := NewPolicy(nil, nil).HostCount(), 3; got != want {
+		t.Fatalf("HostCount() for the empty policy = %d, want %d", got, want)
+	}
+}
