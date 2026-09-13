@@ -51,6 +51,19 @@
     realies' open CAIS-signature PR. Six of its eight commits are carried; the
     two later signature-container commits were not picked.
 
+    Documented divergence carried since the v7.2.159 rebase: upstream 75ce6352
+    (CAQS) rejects any envelope-version-4 block kind outside
+    {thinking, narration}, and this fork additionally accepts an envelope that
+    carries no block kind at all. Channel field 8 is optional, and this pick's
+    own model-free fixtures omit it -- modelFreeClaudeCAISSignatureForExecutorTest
+    in internal/runtime/executor/claude_executor_test.go builds the (4, 17)
+    "recognized" signature without one, and
+    TestClaudeExecutor_ExecuteWarnsForUnknownCAISGenerationAtDefaultInfo requires
+    that signature to survive. The allowlist also admits "tool_use", which this
+    pick's accepted table exercises. Everything else follows upstream: the rule
+    runs on the model-tagged and model-free paths alike, at upstream's position.
+    Re-check this hunk whenever #5422 moves.
+
 - subject: "fix(openai): reset upstream transport after local prewarm"
   layer: pick
   upstream_pr: 5566

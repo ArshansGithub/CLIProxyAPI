@@ -951,6 +951,8 @@ func InspectClaudeCAISSignature(rawSignature string) (*ClaudeCAISSignatureInfo, 
 			return nil, fmt.Errorf("invalid Claude CAIS signature: missing channel field 5 signature bytes")
 		case !haveModelText && info.EnvelopeVersion < 4:
 			return nil, fmt.Errorf("invalid Claude CAIS signature: missing channel field 6 model_text")
+		case !claudeCAQSBlockKindAccepted(info):
+			return nil, claudeCAQSBlockKindError(info)
 		}
 		return info, nil
 	}
@@ -973,8 +975,8 @@ func InspectClaudeCAISSignature(rawSignature string) (*ClaudeCAISSignatureInfo, 
 		return nil, &claudeCAISUnknownGenerationError{identifier: "envelope version", value: info.EnvelopeVersion}
 	case !isKnownClaudeCAISIdentifier(knownClaudeCAISChannelIDs[:], info.ChannelID):
 		return nil, &claudeCAISUnknownGenerationError{identifier: "channel_id", value: info.ChannelID}
-	case info.EnvelopeVersion >= 4 && info.BlockKind != "" && !isKnownClaudeCAQSBlockKind(info.BlockKind):
-		return nil, fmt.Errorf("invalid Claude CAQS signature: expected a known Claude block kind, got %q", info.BlockKind)
+	case !claudeCAQSBlockKindAccepted(info):
+		return nil, claudeCAQSBlockKindError(info)
 	}
 
 	// The model-free carrier in container field 5 is where CAQS keeps the opaque
@@ -990,17 +992,39 @@ func InspectClaudeCAISSignature(rawSignature string) (*ClaudeCAISSignatureInfo, 
 // exercises "tool_use", which is an ordinary Claude block type rather than a
 // bumped generation value. Rejecting a block kind drops the whole thinking
 // block, so this list is the union: garbage kinds are still refused, but a real
-// Claude block name never costs conversation history. Channel field 8 stays
-// optional, so an envelope that carries no block kind at all is not judged here.
+// Claude block name never costs conversation history.
 var knownClaudeCAQSBlockKinds = [...]string{"thinking", "narration", "tool_use"}
 
-func isKnownClaudeCAQSBlockKind(kind string) bool {
+// claudeCAQSBlockKindAccepted applies upstream 75ce6352's envelope-version-4
+// block-kind rule. It is called from both the model-tagged and the model-free
+// branch, at the position upstream checks it: after the signature-bytes and
+// model_text checks and before the envelope is accepted. Upstream folds its
+// container-field-5 bytes into haveSignatureBytes and so reaches this rule on
+// either shape; this fork keeps the two branches separate, so the rule is
+// invoked from each.
+//
+// One deliberate divergence from upstream: an envelope that carries no block
+// kind at all is not judged. Channel field 8 is optional in the envelope, and
+// modelFreeClaudeCAISSignatureForExecutorTest in
+// internal/runtime/executor/claude_executor_test.go builds its (4, 17)
+// "recognized" fixture without it, and
+// TestClaudeExecutor_ExecuteWarnsForUnknownCAISGenerationAtDefaultInfo requires
+// that signature to survive ahead of the unknown-generation rejections it
+// aggregates. Recorded in the #5422 entry of docs/fork/PATCHES.yaml.
+func claudeCAQSBlockKindAccepted(info *ClaudeCAISSignatureInfo) bool {
+	if info == nil || info.EnvelopeVersion < 4 || info.BlockKind == "" {
+		return true
+	}
 	for _, known := range knownClaudeCAQSBlockKinds {
-		if kind == known {
+		if info.BlockKind == known {
 			return true
 		}
 	}
 	return false
+}
+
+func claudeCAQSBlockKindError(info *ClaudeCAISSignatureInfo) error {
+	return fmt.Errorf("invalid Claude CAQS signature: expected a known Claude block kind, got %q", info.BlockKind)
 }
 
 func decodeClaudeCAISVarint(raw []byte, typ protowire.Type, label string) (uint64, error) {
