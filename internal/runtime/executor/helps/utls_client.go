@@ -15,6 +15,7 @@ import (
 	tls "github.com/refraction-networking/utls"
 	internalcache "github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/httpwire"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/httptransport"
@@ -322,8 +323,10 @@ func claudeCodeRequestHeaderOrder(_, requestTarget string) []string {
 }
 
 func cachedClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
+	// The guard is built inside the cache loader so one proxy key keeps one
+	// round tripper identity, which is what connection reuse depends on.
 	return claudeCodeRoundTripperCache.GetOrAdd(proxyURL, func() http.RoundTripper {
-		return newClaudeCodeRoundTripper(proxyURL)
+		return egress.RoundTripper(newClaudeCodeRoundTripper(proxyURL), "helps.claudeCodeRoundTripper")
 	})
 }
 
@@ -380,7 +383,7 @@ func newClaudeCodeRoundTripperForDialerAndRoots(dialer proxy.Dialer, roots *x509
 	// so net/http does not overwrite the native Connection: keep-alive wire header.
 	// Credentials that explicitly opt into connection-pool override MaxIdleConnsPerHost
 	// and IdleConnTimeout in pooledTransport.
-	transport := &http.Transport{
+	transport := egress.GuardTransport(&http.Transport{
 		ForceAttemptHTTP2:   false,
 		MaxIdleConnsPerHost: -1,
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -423,7 +426,7 @@ func newClaudeCodeRoundTripperForDialerAndRoots(dialer proxy.Dialer, roots *x509
 			}
 			return httpwire.NewOrderedRequestConn(tlsConn, claudeCodeRequestHeaderOrder), nil
 		},
-	}
+	})
 	return transport
 }
 

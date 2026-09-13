@@ -16,6 +16,7 @@ import (
 	"github.com/MoeForge/moego/ojson"
 	"github.com/gorilla/websocket"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -244,7 +245,7 @@ func executionProxyURL(ctx context.Context, cfg *config.Config, auth *cliproxyau
 }
 
 func newProxyAwareWebsocketDialer(ctx context.Context, cfg *config.Config, auth *cliproxyauth.Auth) *websocket.Dialer {
-	dialer := &websocket.Dialer{
+	dialer := egress.GuardWebsocketDialer(&websocket.Dialer{
 		Proxy:             http.ProxyFromEnvironment,
 		HandshakeTimeout:  codexResponsesWebsocketHandshakeTO,
 		EnableCompression: true,
@@ -252,7 +253,7 @@ func newProxyAwareWebsocketDialer(ctx context.Context, cfg *config.Config, auth 
 			Timeout:   30 * time.Second,
 			KeepAlive: 30 * time.Second,
 		}).DialContext,
-	}
+	}, "codex.websocket")
 
 	proxyURL := executionProxyURL(ctx, cfg, auth)
 	if proxyURL == "" {
@@ -267,7 +268,7 @@ func newProxyAwareWebsocketDialer(ctx context.Context, cfg *config.Config, auth 
 
 	switch setting.Mode {
 	case proxyutil.ModeDirect:
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.websocket")
 		return dialer
 	case proxyutil.ModeProxy:
 	default:
@@ -287,12 +288,12 @@ func newProxyAwareWebsocketDialer(ctx context.Context, cfg *config.Config, auth 
 			log.Errorf("codex websockets executor: create SOCKS5 dialer failed: %v", errSOCKS5)
 			return dialer
 		}
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.websocket")
 		dialer.NetDialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 			return socksDialer.Dial(network, addr)
 		}
 	case "http", "https":
-		dialer.Proxy = http.ProxyURL(setting.URL)
+		dialer.Proxy = egress.WrapProxyFunc(http.ProxyURL(setting.URL), "codex.websocket")
 	default:
 		log.Errorf("codex websockets executor: unsupported proxy scheme: %s", setting.URL.Scheme)
 	}
