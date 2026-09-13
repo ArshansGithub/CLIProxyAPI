@@ -27,8 +27,12 @@ func TestPrewarmToolsSurviveCompactionReplayBypass(t *testing.T) {
 		{"type":"agent_message","id":"amsg_1","content":[{"type":"input_text","text":"run ls -la"}]}
 	],"stream":true,"store":false}`)
 
-	normalized, _, errMsg := normalizeResponsesWebsocketRequestWithIncrementalState(
-		continuation, lastRequest, []byte("[]"), "resp_prewarm_abc", nil, "resp_prewarm_abc", false, true)
+	// v7.2.159 (bd03aabc) owns this path: a followup that references the pending
+	// synthetic prewarm id is merged with the warm-up request rather than routed
+	// through the incremental-state normalizer, which is what the carried #5566
+	// pick used to do. The regression this test pins is unchanged: the tools the
+	// prewarm frame carried must still reach the upstream request.
+	normalized, _, errMsg := normalizeResponsesWebsocketPrewarmFollowup(continuation, lastRequest)
 	if errMsg != nil {
 		t.Fatalf("continuation normalize: %v", errMsg.Error)
 	}
