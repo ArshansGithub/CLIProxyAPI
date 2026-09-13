@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -1048,6 +1049,34 @@ func TestHostHTTPClientWireProfile_MixedCaseSOCKS5Scheme(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timeout waiting for backend to receive request via mixed-case SOCKS5")
+	}
+}
+
+func TestHostHTTPClientWireProfile_HTTPSTargetStillEgressChecked(t *testing.T) {
+	t.Parallel()
+	// The same host set the sibling wire-profile tests install, so this test
+	// never loosens or tightens the policy they run under. blocked.invalid is
+	// absent from that set, so it is refused whichever of them wins the race.
+	allowBridgeTestHosts(t)
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(proxyServer.Close)
+
+	client := New().newHTTPClient(&coreauth.Auth{ProxyURL: proxyServer.URL})
+
+	// The wire-profile path replaces Transport.Proxy with a function that only
+	// consults the original for plain HTTP. An HTTPS target must still be gated.
+	_, errDo := client.Do(context.Background(), pluginapi.HTTPRequest{
+		URL: "https://blocked.invalid/secure",
+		WireProfile: &pluginapi.HTTPWireProfile{
+			HTTP1Only:     true,
+			HeaderProfile: []string{"Host", "User-Agent"},
+		},
+	})
+	if !errors.Is(errDo, egress.ErrNotPermitted) {
+		t.Fatalf("HTTPS target through the wire profile must be refused, got %v", errDo)
 	}
 }
 
