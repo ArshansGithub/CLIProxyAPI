@@ -16,6 +16,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/clienterror"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers"
@@ -707,7 +708,7 @@ func proxyURLForAuth(cfg *config.Config, selected *auth.Auth) string {
 }
 
 func newSidebandDialer(proxyURL string) *websocket.Dialer {
-	dialer := &websocket.Dialer{Proxy: http.ProxyFromEnvironment}
+	dialer := egress.GuardWebsocketDialer(&websocket.Dialer{Proxy: http.ProxyFromEnvironment}, "codex.liveSideband")
 	if strings.TrimSpace(proxyURL) == "" {
 		return dialer
 	}
@@ -719,7 +720,7 @@ func newSidebandDialer(proxyURL string) *websocket.Dialer {
 	}
 	switch setting.Mode {
 	case proxyutil.ModeDirect:
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.liveSideband")
 		return dialer
 	case proxyutil.ModeProxy:
 	default:
@@ -739,7 +740,7 @@ func newSidebandDialer(proxyURL string) *websocket.Dialer {
 			log.Errorf("codex live sideband: create SOCKS5 dialer failed: %v", errSOCKS5)
 			return dialer
 		}
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.liveSideband")
 		if contextDialer, ok := socksDialer.(xproxy.ContextDialer); ok {
 			dialer.NetDialContext = contextDialer.DialContext
 		} else {
@@ -748,7 +749,7 @@ func newSidebandDialer(proxyURL string) *websocket.Dialer {
 			}
 		}
 	case "http", "https":
-		dialer.Proxy = http.ProxyURL(setting.URL)
+		dialer.Proxy = egress.WrapProxyFunc(http.ProxyURL(setting.URL), "codex.liveSideband")
 	default:
 		log.Errorf("codex live sideband: unsupported proxy scheme: %s", setting.URL.Scheme)
 	}
