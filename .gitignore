@@ -72,4 +72,11 @@ cliproxyapi-patched
 
 # fork: tracked documentation for the locked build (spec, patches, audits)
 !docs/fork/
+!docs/UPSTREAM-README.md
+
+# fork: tracked Claude Code skill for fork maintenance
+!.claude/
+!.claude/skills/
+!.claude/skills/fork-maintenance/
+!.claude/skills/fork-maintenance/SKILL.md
 dist/
