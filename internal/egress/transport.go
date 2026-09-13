@@ -26,11 +26,13 @@ func WrapProxyFunc(next func(*http.Request) (*url.URL, error), site string) func
 }
 
 // GuardTransport installs the policy on t's Proxy function and returns t.
-func GuardTransport(t *http.Transport) *http.Transport {
+// site names the construction point and is what a refusal log identifies, so
+// give each call site its own label rather than a shared "http.Transport".
+func GuardTransport(t *http.Transport, site string) *http.Transport {
 	if t == nil {
 		return nil
 	}
-	t.Proxy = WrapProxyFunc(t.Proxy, "http.Transport")
+	t.Proxy = WrapProxyFunc(t.Proxy, site)
 	return t
 }
 
@@ -79,6 +81,6 @@ func RoundTripper(rt http.RoundTripper, site string) http.RoundTripper {
 func init() {
 	// Cover every client that relies on the default transport.
 	if t, ok := http.DefaultTransport.(*http.Transport); ok {
-		GuardTransport(t)
+		GuardTransport(t, "http.DefaultTransport")
 	}
 }
