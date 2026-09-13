@@ -33,6 +33,10 @@ type catalogUpdater struct {
 func (u *catalogUpdater) configure(ctx context.Context, source string) {
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if !remoteModelRefreshEnabled && source != "disabled" {
+		log.Info("locked build: remote model catalog refresh disabled; using embedded snapshot")
+		source = "disabled"
+	}
 	if u.cancel != nil && u.source == source && u.parentDone == ctx.Done() && u.ctx.Err() == nil {
 		return
 	}
