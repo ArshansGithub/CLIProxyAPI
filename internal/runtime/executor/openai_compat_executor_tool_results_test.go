@@ -92,8 +92,23 @@ func TestOpenAICompatExecutorToolResultContentByInputModalities(t *testing.T) {
 				if toolContent.String() != want {
 					t.Fatalf("tool content = %q, want %q", toolContent.String(), want)
 				}
-			} else if !toolContent.IsArray() {
-				t.Fatalf("tool content type = %s, want array; body=%s", toolContent.Type, string(gotBody))
+				if gjson.GetBytes(gotBody, "messages.2").Exists() {
+					t.Fatalf("text-only upstream must not receive the relayed image message; body=%s", string(gotBody))
+				}
+			} else {
+				// v7.2.159 (4cd17293) relays tool_result images in the user message
+				// that follows, because the OpenAI API rejects image parts on a
+				// role=tool message. The tool message keeps the text.
+				if toolContent.Type != gjson.String || toolContent.String() != "image inspected" {
+					t.Fatalf("tool content = %q (%s), want the text %q; body=%s", toolContent.String(), toolContent.Type, "image inspected", string(gotBody))
+				}
+				relay := gjson.GetBytes(gotBody, "messages.2")
+				if relay.Get("role").String() != "user" || !relay.Get("content").IsArray() {
+					t.Fatalf("relayed image message missing; body=%s", string(gotBody))
+				}
+				if !gjson.GetBytes(gotBody, `messages.2.content.#(type=="image_url")`).Exists() {
+					t.Fatalf("relayed message carries no image part; body=%s", string(gotBody))
+				}
 			}
 		})
 	}

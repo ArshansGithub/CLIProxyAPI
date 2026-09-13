@@ -49,7 +49,7 @@ func NormalizeOpenAIToolResultsTextOnly(payload []byte) []byte {
 		messageIndex++
 		return true
 	})
-	return out
+	return foldRelayedToolResultImages(out)
 }
 
 func openAICompatibilityModelExcludesImages(models []config.OpenAICompatibilityModel, model string) (bool, bool) {
