@@ -51,15 +51,18 @@
     realies' open CAIS-signature PR. Six of its eight commits are carried; the
     two later signature-container commits were not picked.
 
-- subjects:
-    - "fix(openai): preserve local prewarm context during compact replay"
-    - "fix(openai): reset upstream transport after local prewarm"
+- subject: "fix(openai): reset upstream transport after local prewarm"
   layer: pick
   upstream_pr: 5566
-  drop: "upstream merges #5566"
+  drop: "upstream resets the upstream transport after a synthetic local prewarm"
   note: >-
     omsd512-W's open PR. Without it a Codex Desktop subagent spawned after the
-    parent thread compacted loses every tool.
+    parent thread compacted loses every tool. The PR's other commit,
+    "fix(openai): preserve local prewarm context during compact replay", was
+    dropped at the v7.2.159 rebase: bd03aabc (closes upstream #5631) ships the
+    equivalent and more, tracking the pending synthetic prewarm id and merging
+    the warm-up input into the followup instead of refusing it. Only the
+    transport reset is still fork-only, so only that commit is carried.
 
 - subject: "test(openai): subagent spawned after parent compaction keeps prewarm tools"
   layer: fix
@@ -176,13 +179,31 @@
   upstream_pr: null
   drop: "never while this fork is built and installed from source"
 
-- subject: "fix(docs): remove Infistar.ai sponsorship details from README files"
-  layer: pick
+- subject: "fix: reconcile carried patches with v7.2.159's equivalents"
+  layer: fix
   upstream_pr: null
-  drop: "drops out on any rebase onto v7.2.155 or later; it is already upstream"
+  drop: >-
+    fold each hunk into the patch it adjusts the next time that patch is
+    rewritten, or drop with the patch itself
   note: >-
-    Upstream commit d198db54, first released in v7.2.155 and pulled forward into
-    this stack early. Not a fork change: no PR, nothing to carry after the rebase.
+    Follow-ups the v7.2.159 rebase could not fold into the commits they belong
+    to, because those commits had already been replayed: the CAQS / model-free
+    CAIS block-kind reconciliation in internal/signature, the cache-stats stream
+    test moved onto MergeStreamUsageDetail, and the prewarm regression test
+    moved onto upstream's normalizeResponsesWebsocketPrewarmFollowup.
+
+- subject: "fix(openai): keep tool-result images off a text-only compat upstream"
+  layer: fix
+  upstream_pr: null
+  drop: >-
+    upstream applies its input-modalities normalization to the user message
+    4cd17293 relays tool-result images through
+  note: >-
+    v7.2.159's 4cd17293 hoists tool_result images into a following user message
+    before NormalizeOpenAIToolResultsTextOnly runs, so an
+    openai-compatibility model declared text-only receives the image anyway.
+    Upstream's own TestOpenAICompatExecutorToolResultContentByInputModalities
+    fails at v7.2.159 without this.
 
 # ----------------------------------------------------------- locked build ---
 
