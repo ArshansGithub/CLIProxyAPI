@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
@@ -641,7 +642,15 @@ func TestAntigravityTransportMatchesNativeTLSProfile(t *testing.T) {
 // TestAntigravityProxiedRequestsReuseOneConnection proves the end-to-end effect:
 // repeated Antigravity clients built for the same auth send every request over a
 // single pooled connection.
+// allowAntigravityTestHost permits the fake upstream hostname these tests send
+// through their loopback proxy server.
+func allowAntigravityTestHost(t *testing.T) {
+	t.Helper()
+	egress.SetConfigWithBuiltin(nil, []string{"antigravity.invalid"})
+}
+
 func TestAntigravityProxiedRequestsReuseOneConnection(t *testing.T) {
+	allowAntigravityTestHost(t)
 	var mu sync.Mutex
 	remotes := map[string]int{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -856,6 +865,7 @@ func TestAntigravityPoolConfigIdleTimeoutCustomAndCap(t *testing.T) {
 // in short mode (MaxIdleConnsPerHost=-1), repeated requests do not reuse connections,
 // but the HTTP wire request never leaks "Connection: close".
 func TestAntigravityShortModeNeverAdvertisesConnectionCloseAndDisconnects(t *testing.T) {
+	allowAntigravityTestHost(t)
 	var mu sync.Mutex
 	remotes := map[string]int{}
 	var connectionHeaders []string

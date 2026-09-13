@@ -19,14 +19,26 @@ import (
 	"github.com/gin-gonic/gin"
 	xaiauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/xai"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v7/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
 )
 
+// allowAPICallTestHosts installs the egress policy these tests need. The
+// destinations below are never dialled (the proxy function is inspected
+// directly, or the request is proxied to a loopback httptest server), but the
+// gate runs on every request, so they must be permitted. Every caller installs
+// the same host set, which keeps the parallel tests independent of ordering.
+func allowAPICallTestHosts(t *testing.T) {
+	t.Helper()
+	egress.SetConfigWithBuiltin(nil, []string{"example.com", "upstream.invalid"})
+}
+
 func TestAPICallUsesRequestProxyURL(t *testing.T) {
 	t.Parallel()
+	allowAPICallTestHosts(t)
 
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -66,6 +78,7 @@ func TestAPICallUsesRequestProxyURL(t *testing.T) {
 
 func TestAPICallTransportDirectBypassesGlobalProxy(t *testing.T) {
 	t.Parallel()
+	allowAPICallTestHosts(t)
 
 	h := &Handler{
 		cfg: &config.Config{
@@ -78,13 +91,22 @@ func TestAPICallTransportDirectBypassesGlobalProxy(t *testing.T) {
 	if !ok {
 		t.Fatalf("transport type = %T, want *http.Transport", transport)
 	}
-	if httpTransport.Proxy != nil {
-		t.Fatal("expected direct transport to disable proxy function")
+	req, errRequest := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if errRequest != nil {
+		t.Fatalf("http.NewRequest returned error: %v", errRequest)
+	}
+	proxyURL, errProxy := httpTransport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("httpTransport.Proxy returned error: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected no proxy to be selected, got %v", proxyURL)
 	}
 }
 
 func TestAPICallTransportInvalidAuthFallsBackToGlobalProxy(t *testing.T) {
 	t.Parallel()
+	allowAPICallTestHosts(t)
 
 	h := &Handler{
 		cfg: &config.Config{
@@ -114,6 +136,7 @@ func TestAPICallTransportInvalidAuthFallsBackToGlobalProxy(t *testing.T) {
 
 func TestAPICallTransportRequestProxyOverridesCredentialAndGlobalProxy(t *testing.T) {
 	t.Parallel()
+	allowAPICallTestHosts(t)
 
 	h := &Handler{
 		cfg: &config.Config{
@@ -144,6 +167,7 @@ func TestAPICallTransportRequestProxyOverridesCredentialAndGlobalProxy(t *testin
 
 func TestAPICallTransportInvalidRequestProxyDoesNotFallBack(t *testing.T) {
 	t.Parallel()
+	allowAPICallTestHosts(t)
 
 	h := &Handler{
 		cfg: &config.Config{
@@ -157,13 +181,22 @@ func TestAPICallTransportInvalidRequestProxyDoesNotFallBack(t *testing.T) {
 	if !ok {
 		t.Fatalf("transport type = %T, want *http.Transport", transport)
 	}
-	if httpTransport.Proxy != nil {
-		t.Fatal("expected invalid request proxy to avoid lower-priority proxy settings")
+	req, errRequest := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if errRequest != nil {
+		t.Fatalf("http.NewRequest returned error: %v", errRequest)
+	}
+	proxyURL, errProxy := httpTransport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("httpTransport.Proxy returned error: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected no proxy to be selected, got %v", proxyURL)
 	}
 }
 
 func TestAPICallTransportAPIKeyAuthFallsBackToConfigProxyURL(t *testing.T) {
 	t.Parallel()
+	allowAPICallTestHosts(t)
 
 	h := &Handler{
 		cfg: &config.Config{

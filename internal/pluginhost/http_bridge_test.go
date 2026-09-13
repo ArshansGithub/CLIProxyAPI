@@ -16,10 +16,20 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
+
+// allowBridgeTestHosts permits the fake upstream hostnames these bridge tests
+// send through their loopback proxy servers. The egress gate runs on every
+// request, so the destinations have to be permitted even though the bytes never
+// leave the machine.
+func allowBridgeTestHosts(t *testing.T) {
+	t.Helper()
+	egress.SetConfigWithBuiltin(nil, []string{"example.com", "example.org"})
+}
 
 func TestHostHTTPClientMarksUpstreamAttempt(t *testing.T) {
 	t.Parallel()
@@ -243,6 +253,7 @@ func TestHostHTTPClientWireProfile_CustomRoundTripperValidation(t *testing.T) {
 
 func TestHostHTTPClientWireProfile_PlainHTTPProxyUsesStandardProxy(t *testing.T) {
 	t.Parallel()
+	allowBridgeTestHosts(t)
 
 	receivedMethod := make(chan string, 1)
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -340,6 +351,7 @@ func TestHostHTTPClientWireProfile_ClosesIdleConnectionsOnCompletion(t *testing.
 
 func TestHostHTTPClientWireProfile_ProxyPriorityOverContextRoundTripper(t *testing.T) {
 	t.Parallel()
+	allowBridgeTestHosts(t)
 
 	proxyReceived := make(chan struct{}, 1)
 	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -933,8 +945,16 @@ func TestHostHTTPClientWireProfile_DirectProxyModeInheritsDefaultTransport(t *te
 	if !ok {
 		t.Fatalf("expected *http.Transport, got %T", httpClient.Transport)
 	}
-	if transport.Proxy != nil {
-		t.Fatal("expected nil proxy for direct mode")
+	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
+	}
+	proxyURL, errProxy := transport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected direct mode to select no proxy, got %v", proxyURL)
 	}
 	// Verify it inherited default transport dial timeouts
 	if transport.IdleConnTimeout == 0 {
@@ -1033,6 +1053,7 @@ func TestHostHTTPClientWireProfile_MixedCaseSOCKS5Scheme(t *testing.T) {
 
 func TestHostHTTPClientWireProfile_HTTPSProxyForwardingPlainHTTP(t *testing.T) {
 	t.Parallel()
+	allowBridgeTestHosts(t)
 
 	proxyReceived := make(chan string, 1)
 	proxyServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1161,6 +1182,7 @@ func TestHostHTTPClientWireProfile_HTTPSProxyForwardingHTTPS(t *testing.T) {
 
 func TestHostHTTPClientWireProfile_CustomTLSDialerUsedForHTTPSProxy(t *testing.T) {
 	t.Parallel()
+	allowBridgeTestHosts(t)
 
 	proxyTLSDialed := make(chan string, 1)
 	proxyServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -16,7 +16,15 @@ func TestRoundTripperForDirectBypassesProxy(t *testing.T) {
 	if !ok {
 		t.Fatalf("transport type = %T, want *http.Transport", rt)
 	}
-	if transport.Proxy != nil {
-		t.Fatal("expected direct transport to disable proxy function")
+	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
+	}
+	proxyURL, errProxy := transport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected direct transport to select no proxy, got %v", proxyURL)
 	}
 }

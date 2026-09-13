@@ -134,11 +134,7 @@ func TestClaudeOAuthTLSResumptionIsWireSafe(t *testing.T) {
 	// refresh and the executor profile check build them must still share a cache.
 	cacheOf := func(service *ClaudeAuth) tls.ClientSessionCache {
 		t.Helper()
-		transport, ok := service.httpClient.Transport.(*utlsRoundTripper)
-		if !ok {
-			t.Fatalf("ClaudeAuth transport type = %T, want *utlsRoundTripper", service.httpClient.Transport)
-		}
-		return transport.sessionCache
+		return utlsTransportOf(t, service.httpClient.Transport).sessionCache
 	}
 	if cacheOf(NewClaudeAuthWithProxyURL(nil, "http://127.0.0.1:11")) != cacheOf(NewClaudeAuthWithProxyURL(nil, "http://127.0.0.1:11")) {
 		t.Fatal("per-operation ClaudeAuth instances do not share a session cache, so refresh can never resume")
