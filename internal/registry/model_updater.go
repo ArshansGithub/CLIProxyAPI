@@ -16,11 +16,6 @@ import (
 // ModelsRefreshInterval is the shared cadence for model catalogs and account entitlements.
 const ModelsRefreshInterval = 3 * time.Hour
 
-var modelsURLs = []string{
-	"https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/models.json",
-	"https://models.router-for.me/models.json",
-}
-
 //go:embed models/models.json
 var embeddedModelsJSON []byte
 
