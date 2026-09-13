@@ -73,3 +73,4 @@ cliproxyapi-patched
 
 # fork: tracked documentation for the locked build (spec, patches, audits)
 !docs/fork/
+dist/
