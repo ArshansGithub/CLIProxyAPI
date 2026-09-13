@@ -523,11 +523,11 @@ func (h *Handler) apiCallTransport(auth *coreauth.Auth, requestProxyURL string) 
 func directAPICallTransport() http.RoundTripper {
 	transport, ok := http.DefaultTransport.(*http.Transport)
 	if !ok || transport == nil {
-		return egress.GuardTransport(&http.Transport{Proxy: nil})
+		return egress.GuardTransport(&http.Transport{Proxy: nil}, "management.apiCallTransport")
 	}
 	clone := transport.Clone()
 	clone.Proxy = nil
-	return egress.GuardTransport(clone)
+	return egress.GuardTransport(clone, "management.apiCallTransport")
 }
 
 type apiKeyConfigEntry interface {

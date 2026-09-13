@@ -14,7 +14,7 @@ func TestGuardedTransportRefusesUnlistedHost(t *testing.T) {
 	SetConfigWithBuiltin(testConfig("enforce"), nil)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
 	defer srv.Close()
-	client := &http.Client{Transport: GuardTransport(&http.Transport{})}
+	client := &http.Client{Transport: GuardTransport(&http.Transport{}, "test.guarded")}
 	// 127.0.0.1 is loopback and allowed.
 	if _, err := client.Get(srv.URL); err != nil {
 		t.Fatalf("loopback should pass: %v", err)
@@ -30,7 +30,7 @@ func TestGuardTransportPreservesExistingProxyFunc(t *testing.T) {
 	SetConfigWithBuiltin(testConfig("enforce", "api.example.com"), nil)
 	called := false
 	tr := &http.Transport{Proxy: func(r *http.Request) (*url.URL, error) { called = true; return nil, nil }}
-	GuardTransport(tr)
+	GuardTransport(tr, "test.preserve")
 	req, _ := http.NewRequest("GET", "https://api.example.com/", nil)
 	if _, err := tr.Proxy(req); err != nil || !called {
 		t.Fatalf("existing proxy func must run after the check (err=%v called=%v)", err, called)

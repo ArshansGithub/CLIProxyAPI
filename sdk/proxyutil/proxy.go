@@ -76,16 +76,16 @@ func Parse(raw string) (Setting, error) {
 
 func cloneDefaultTransport() *http.Transport {
 	if transport, ok := http.DefaultTransport.(*http.Transport); ok && transport != nil {
-		return egress.GuardTransport(transport.Clone())
+		return egress.GuardTransport(transport.Clone(), "proxyutil.cloneDefaultTransport")
 	}
-	return egress.GuardTransport(&http.Transport{})
+	return egress.GuardTransport(&http.Transport{}, "proxyutil.cloneDefaultTransport")
 }
 
 // NewDirectTransport returns a transport that bypasses environment proxies.
 func NewDirectTransport() *http.Transport {
 	clone := cloneDefaultTransport()
 	clone.Proxy = nil
-	return egress.GuardTransport(clone)
+	return egress.GuardTransport(clone, "proxyutil.NewDirectTransport")
 }
 
 // BuildHTTPTransport constructs an HTTP transport for the provided proxy setting.
@@ -117,17 +117,17 @@ func BuildHTTPTransport(raw string) (*http.Transport, Mode, error) {
 			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, addr)
 			}
-			return egress.GuardTransport(transport), setting.Mode, nil
+			return egress.GuardTransport(transport, "proxyutil.BuildHTTPTransport"), setting.Mode, nil
 		}
 		if setting.URL.Scheme == "https" {
 			transport := cloneDefaultTransport()
 			transport.Proxy = http.ProxyURL(setting.URL)
 			transport.DialTLSContext = buildHTTPSProxyDialTLSContext(setting.URL, nil, transport.TLSHandshakeTimeout, transport.DialContext)
-			return egress.GuardTransport(transport), setting.Mode, nil
+			return egress.GuardTransport(transport, "proxyutil.BuildHTTPTransport"), setting.Mode, nil
 		}
 		transport := cloneDefaultTransport()
 		transport.Proxy = http.ProxyURL(setting.URL)
-		return egress.GuardTransport(transport), setting.Mode, nil
+		return egress.GuardTransport(transport, "proxyutil.BuildHTTPTransport"), setting.Mode, nil
 	default:
 		return nil, setting.Mode, nil
 	}

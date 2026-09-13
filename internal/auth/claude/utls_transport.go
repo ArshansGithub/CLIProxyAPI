@@ -195,7 +195,7 @@ func newUtlsRoundTripper(cfg *config.SDKConfig) *utlsRoundTripper {
 	roundTripper.transport = egress.GuardTransport(&http.Transport{
 		ForceAttemptHTTP2: false,
 		DialTLSContext:    roundTripper.dialTLSContext,
-	})
+	}, "claude.oauthTransport")
 	return roundTripper
 }
 

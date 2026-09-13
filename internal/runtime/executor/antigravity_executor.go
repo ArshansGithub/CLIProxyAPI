@@ -235,7 +235,7 @@ func defaultAntigravityBaseTransport() *http.Transport {
 	if transport, ok := http.DefaultTransport.(*http.Transport); ok && transport != nil {
 		return transport
 	}
-	return egress.GuardTransport(&http.Transport{})
+	return egress.GuardTransport(&http.Transport{}, "antigravity.transport")
 }
 
 func cloneTransportWithHTTP11(base *http.Transport, cfgs ...*config.Config) *http.Transport {

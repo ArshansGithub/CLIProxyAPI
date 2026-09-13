@@ -343,7 +343,7 @@ func newClaudeCodeRoundTripper(proxyURL string) http.RoundTripper {
 			}
 			return httpwire.NewOrderedRequestConn(tlsConn, claudeCodeRequestHeaderOrder), nil
 		},
-	})
+	}, "helps.claudeCodeTransport")
 	return transport
 }
 
