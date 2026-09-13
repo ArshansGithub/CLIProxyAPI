@@ -54,6 +54,9 @@ type SDKConfig struct {
 	// UsageCacheStats configures the retained per-session prompt-cache statistics store.
 	UsageCacheStats UsageCacheStatsConfig `yaml:"usage-cache-stats" json:"usage-cache-stats"`
 
+	// Egress configures the outbound host allowlist enforced by internal/egress.
+	Egress EgressConfig `yaml:"egress" json:"egress"`
+
 	// APIKeys is a list of keys for authenticating clients to this proxy server.
 	APIKeys []string `yaml:"api-keys" json:"api-keys"`
 

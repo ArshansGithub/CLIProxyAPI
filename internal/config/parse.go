@@ -51,6 +51,10 @@ func ParseConfigBytes(data []byte) (*Config, error) {
 	if errValidate := cfg.UsageCacheStats.Validate(); errValidate != nil {
 		return nil, errValidate
 	}
+	cfg.Egress = cfg.Egress.WithDefaults()
+	if errValidate := cfg.Egress.Validate(); errValidate != nil {
+		return nil, errValidate
+	}
 	if errValidate := cfg.CredentialInFlight.Validate(); errValidate != nil {
 		return nil, errValidate
 	}
