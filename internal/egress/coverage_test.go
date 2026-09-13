@@ -13,7 +13,12 @@ import (
 // bare .Proxy assignments (the [^=] excludes == comparisons). A guarded
 // transport can be de-guarded by a later .Proxy = ... assignment that
 // bypasses egress.WrapProxyFunc, so that pattern must be caught too.
-var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]`)
+//
+// Spec §4.4 also names the two shapes that reach the network without ever
+// writing an `&http.Transport{}` literal: an http.Client built with a
+// Transport field, and `new(http.Transport)`. Both are matched here so a file
+// cannot construct an unguarded client by spelling it differently.
+var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)`)
 
 func TestNoUnguardedTransportConstruction(t *testing.T) {
 	root := repoRoot(t)
