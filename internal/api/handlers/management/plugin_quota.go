@@ -6,11 +6,13 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	log "github.com/sirupsen/logrus"
@@ -414,6 +416,17 @@ func (h *Handler) executeQuotaProbe(c *gin.Context, auth *coreauth.Auth, probe m
 		}
 		urlStr = strings.ReplaceAll(urlStr, "$TOKEN$", token)
 		rawData = strings.ReplaceAll(rawData, "$TOKEN$", token)
+	}
+
+	// The probe URL comes from credential metadata and now carries the credential's
+	// live token, so the egress policy decides whether this host may be contacted
+	// before the request is built. Same chokepoint as management.APICall.
+	parsedURL, errParseURL := url.Parse(urlStr)
+	if errParseURL != nil || parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return pluginapi.QuotaFetchResponse{}, true, fmt.Errorf("invalid probe url")
+	}
+	if errEgress := egress.CheckURL(parsedURL, "management.pluginQuotaProbe"); errEgress != nil {
+		return pluginapi.QuotaFetchResponse{}, true, errEgress
 	}
 
 	var reqBody io.Reader
