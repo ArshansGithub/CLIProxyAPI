@@ -57,6 +57,11 @@ func NewPolicy(cfg *config.Config, builtin []string) *Policy {
 // Mode returns "enforce" or "audit".
 func (p *Policy) Mode() string { return p.mode }
 
+// HostCount returns how many distinct hosts the policy admits: loopback, the
+// built-in provider hosts, every configured base URL's hostname, and
+// egress.extra-allow, after normalization and de-duplication.
+func (p *Policy) HostCount() int { return len(p.hosts) }
+
 // Allowed reports whether host (with or without port, any case) is in the set.
 func (p *Policy) Allowed(host string) bool {
 	_, ok := p.hosts[config.NormalizeEgressHost(host)]
