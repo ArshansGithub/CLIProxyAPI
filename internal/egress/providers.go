@@ -24,13 +24,19 @@ func Register(provider string, hosts ...string) {
 	}
 }
 
-// BuiltinHosts returns every registered host, sorted, for NewPolicy.
+// BuiltinHosts returns every registered host, deduplicated across providers
+// and sorted, for NewPolicy.
 func BuiltinHosts() []string {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
+	seen := map[string]struct{}{}
 	var out []string
 	for _, set := range registry {
 		for h := range set {
+			if _, ok := seen[h]; ok {
+				continue
+			}
+			seen[h] = struct{}{}
 			out = append(out, h)
 		}
 	}
