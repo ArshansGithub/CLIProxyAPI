@@ -6,7 +6,8 @@ LDFLAGS      := -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT) \
                 -X main.DefaultConfigPath=/opt/homebrew/etc/cliproxyapi.conf
 GOFLAGS_LOCKED := -tags locked
 
-.PHONY: build verify verify-tagless install rollback upstream-fetch refresh-models
+.PHONY: build verify verify-tagless install rollback upstream-fetch refresh-models \
+        patches upstream-audit rebase
 
 build:
 	@mkdir -p dist
@@ -35,3 +36,23 @@ upstream-fetch:
 
 refresh-models:
 	./scripts/refresh-models.sh
+
+patches:
+	./scripts/patches.sh
+
+upstream-audit:
+	@[ -n "$(TAG)" ] || { echo "usage: make upstream-audit TAG=vX.Y.Z"; exit 1; }
+	./scripts/upstream-audit.sh $(TAG)
+
+# The audit checklist gates the rebase. Items whose text starts with
+# "After install:" are exempt: they can only be ticked once the rebuilt binary
+# is running, which is after this target. Every other item must be ticked.
+rebase:
+	@[ -n "$(TAG)" ] || { echo "usage: make rebase TAG=vX.Y.Z"; exit 1; }
+	@[ -f docs/fork/audits/$(TAG).md ] || { echo "no audit report for $(TAG); run make upstream-audit TAG=$(TAG)"; exit 1; }
+	@! grep '^- \[ \]' docs/fork/audits/$(TAG).md | grep -v '^- \[ \] After install:' \
+	  || { echo "audit checklist for $(TAG) has unticked items (post-install items are exempt)"; exit 1; }
+	git config rerere.enabled true
+	git branch -f locked-prev HEAD
+	git rebase --onto $(TAG) $$(git describe --tags --abbrev=0 --match 'v[0-9]*') locked
+	@echo "rebased onto $(TAG); now: make verify"
