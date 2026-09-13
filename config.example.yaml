@@ -32,6 +32,18 @@ remote-management:
   # GitHub repository for the management control panel. Accepts a repository URL or releases API URL.
   panel-github-repository: "https://github.com/router-for-me/Cli-Proxy-API-Management-Center"
 
+# Outbound host policy (privacy-locked fork; see internal/egress).
+# "enforce" refuses any connection to a host outside the allowlist; "audit" is
+# fail-open and only logs what would have been refused. Loopback, the built-in
+# provider hosts and every configured base URL are always allowed.
+egress:
+  mode: enforce
+
+  # Extra hostnames to admit, beyond the ones above. Ports are ignored and
+  # matching is case-insensitive.
+  # extra-allow:
+  #   - proxy.internal.example.com
+
 # Authentication directory (supports ~ for home directory)
 auth-dir: "~/.cli-proxy-api"
 
