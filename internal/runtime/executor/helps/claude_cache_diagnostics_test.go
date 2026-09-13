@@ -114,9 +114,51 @@ func TestClaudeCacheAnnotationApplyFillsOnlyMissingFields(t *testing.T) {
 	}
 }
 
+// Upstream v7.2.159 (a59b1764) made ParseClaudeStreamUsage read message.usage so
+// message_start feeds the aggregated trailing usage chunk. message_delta must
+// still win the totals, which is now MergeStreamUsageDetail's job: the later
+// update is authoritative and message_start only fills in what it left at zero.
 func TestParseClaudeStreamUsageKeepsMessageDeltaAsUsageSource(t *testing.T) {
-	if _, ok := ParseClaudeStreamUsage([]byte(messageStartLine)); ok {
-		t.Error("message_start must not be treated as the usage source; message_delta is authoritative")
+	start, okStart := ParseClaudeStreamUsage([]byte(messageStartLine))
+	if !okStart {
+		t.Fatal("ParseClaudeStreamUsage(message_start) returned false")
+	}
+	delta, okDelta := ParseClaudeStreamUsage([]byte(messageDeltaLine))
+	if !okDelta {
+		t.Fatal("ParseClaudeStreamUsage(message_delta) returned false")
+	}
+
+	var buffer StreamUsageBuffer
+	annotation, okAnnotation := ParseClaudeCacheAnnotation([]byte(messageStartLine))
+	if !okAnnotation {
+		t.Fatal("ParseClaudeCacheAnnotation(message_start) returned false")
+	}
+	ObserveMergedStreamUsage(&buffer, annotation.Apply(start))
+	ObserveMergedStreamUsage(&buffer, annotation.Apply(delta))
+
+	merged, ok := buffer.Detail()
+	if !ok {
+		t.Fatal("StreamUsageBuffer.Detail() returned false")
+	}
+	if merged.OutputTokens != delta.OutputTokens {
+		t.Errorf("OutputTokens = %d, want message_delta's %d", merged.OutputTokens, delta.OutputTokens)
+	}
+	if merged.InputTokens != delta.InputTokens {
+		t.Errorf("InputTokens = %d, want message_delta's %d", merged.InputTokens, delta.InputTokens)
+	}
+	if merged.CacheCreationTokens != delta.CacheCreationTokens {
+		t.Errorf("CacheCreationTokens = %d, want message_delta's %d", merged.CacheCreationTokens, delta.CacheCreationTokens)
+	}
+	// The 5m/1h split and the miss reason only ever appear in message_start, so
+	// the annotation must still carry them onto the aggregated record.
+	if merged.CacheCreation1hTokens != 197015 {
+		t.Errorf("CacheCreation1hTokens = %d, want 197015", merged.CacheCreation1hTokens)
+	}
+	if merged.CacheMissReason != "tools_changed" {
+		t.Errorf("CacheMissReason = %q, want tools_changed", merged.CacheMissReason)
+	}
+	if merged.CacheMissedTokens != 90151 {
+		t.Errorf("CacheMissedTokens = %d, want 90151", merged.CacheMissedTokens)
 	}
 }
 
