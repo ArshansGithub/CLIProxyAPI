@@ -17,6 +17,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
 	internalsignature "github.com/router-for-me/CLIProxyAPI/v8/internal/signature"
 	antigravityclaude "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/antigravity/claude"
@@ -235,7 +236,7 @@ func defaultAntigravityBaseTransport() *http.Transport {
 	if transport, ok := http.DefaultTransport.(*http.Transport); ok && transport != nil {
 		return transport
 	}
-	return &http.Transport{}
+	return egress.GuardTransport(&http.Transport{})
 }
 
 func cloneTransportWithHTTP11(base *http.Transport, cfgs ...*config.Config) *http.Transport {
