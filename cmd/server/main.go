@@ -272,6 +272,10 @@ func main() {
 	// Determine and load the configuration file.
 	// Prefer the Postgres store when configured, otherwise fallback to git or local files.
 	var configFilePath string
+	if reason := lockedBuildRefusal(strings.TrimSpace(homeJWT) != "", usePostgresStore, useObjectStore, gitStoreRemoteURL != ""); reason != "" {
+		log.Error(reason)
+		os.Exit(1)
+	}
 	if strings.TrimSpace(homeJWT) != "" {
 		configLoadedFromHome = true
 		ctxHome, cancelHome := context.WithTimeout(context.Background(), 30*time.Second)

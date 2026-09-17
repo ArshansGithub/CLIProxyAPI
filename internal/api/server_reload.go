@@ -10,6 +10,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/lockedbuild"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/managementasset"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/redisqueue"
@@ -44,6 +45,12 @@ func (s *Server) UpdateClients(cfg *config.Config) {
 // UpdateClientsContext updates runtime clients while honoring cancellation between
 // short configuration and filesystem operations.
 func (s *Server) UpdateClientsContext(ctx context.Context, cfg *config.Config) bool {
+	if lockedbuild.Enabled && cfg != nil && cfg.Home.Enabled {
+		// Home mode never passes the egress gate and can carry an egress block
+		// of its own; a reload must not be a way to switch it on.
+		log.Error("locked build: ignoring home.enabled from reloaded config (home mode is disabled)")
+		cfg.Home.Enabled = false
+	}
 	if s == nil || cfg == nil {
 		return false
 	}
