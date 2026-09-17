@@ -26,7 +26,7 @@ import (
 // or belongs to a feature the locked build refuses at startup (Home mode,
 // the network-backed token stores); either way it must be listed and
 // explained in coverage_allowlist.txt.
-var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)|proxy\.SOCKS5\(|proxy\.FromURL\(|net\.Dial(Timeout)?\(|tls\.Dial\(|http2\.Transport\{|redis\.Options\{|redis\.NewDialer|minio\.Options\{|sql\.Open\(|git\.PlainClone\(`)
+var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)|proxy\.SOCKS5\(|proxy\.FromURL\(|net\.Dial(Timeout)?\(|net\.Dialer\{|tls\.Dial\(|http2\.Transport\{|redis\.Options\{|redis\.NewDialer|minio\.Options\{|sql\.Open\(|git\.PlainClone\(`)
 
 // socksDialer matches the constructors whose forward dialer must be guarded.
 var socksDialer = regexp.MustCompile(`proxy\.SOCKS5\(|proxy\.FromURL\(`)
