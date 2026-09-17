@@ -45,7 +45,7 @@ func NewPolicy(cfg *config.Config, builtin []string) *Policy {
 		for _, h := range cfg.Egress.ExtraAllow {
 			add(h)
 		}
-		for _, u := range configuredBaseURLs(cfg) {
+		for _, u := range append(configuredBaseURLs(cfg), configuredProxyURLs(cfg)...) {
 			if parsed, err := url.Parse(strings.TrimSpace(u)); err == nil {
 				add(parsed.Hostname())
 			}
@@ -116,6 +116,32 @@ func configuredBaseURLs(cfg *config.Config) []string {
 	}
 	for _, e := range cfg.XAIKey {
 		out = append(out, e.BaseURL)
+	}
+	return out
+}
+
+// configuredProxyURLs collects every proxy-url a user can set in config. A
+// forward proxy is where the socket actually goes, so its host must be
+// admitted like a base-url host. Per-credential proxy_url values in auth
+// files are not config and need egress.extra-allow.
+func configuredProxyURLs(cfg *config.Config) []string {
+	out := []string{cfg.ProxyURL}
+	for _, e := range cfg.ClaudeKey {
+		out = append(out, e.ProxyURL)
+	}
+	for _, e := range cfg.CodexKey {
+		out = append(out, e.ProxyURL)
+	}
+	for _, e := range cfg.GeminiKey {
+		out = append(out, e.ProxyURL)
+	}
+	for _, e := range cfg.VertexCompatAPIKey {
+		out = append(out, e.ProxyURL)
+	}
+	for _, e := range cfg.OpenAICompatibility {
+		for _, k := range e.APIKeyEntries {
+			out = append(out, k.ProxyURL)
+		}
 	}
 	return out
 }

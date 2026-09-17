@@ -18,7 +18,7 @@ import (
 // writing an `&http.Transport{}` literal: an http.Client built with a
 // Transport field, and `new(http.Transport)`. Both are matched here so a file
 // cannot construct an unguarded client by spelling it differently.
-var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)`)
+var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)|proxy\.SOCKS5\(|proxy\.FromURL\(`)
 
 func TestNoUnguardedTransportConstruction(t *testing.T) {
 	root := repoRoot(t)

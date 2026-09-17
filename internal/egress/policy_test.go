@@ -90,3 +90,21 @@ func TestPolicyHostCountCoversLoopbackBuiltinAndExtra(t *testing.T) {
 		t.Fatalf("HostCount() for the empty policy = %d, want %d", got, want)
 	}
 }
+
+func TestPolicyAdmitsConfiguredProxyURLHosts(t *testing.T) {
+	cfg := testConfig("enforce")
+	cfg.ProxyURL = "socks5://global-proxy.example:1080"
+	cfg.ClaudeKey = []config.ClaudeKey{{APIKey: "k", ProxyURL: "http://claude-proxy.example:3128"}}
+	cfg.CodexKey = []config.CodexKey{{APIKey: "k", ProxyURL: "https://codex-proxy.example"}}
+	cfg.GeminiKey = []config.GeminiKey{{APIKey: "k", ProxyURL: "socks5h://gemini-proxy.example:1080"}}
+	cfg.VertexCompatAPIKey = []config.VertexCompatKey{{APIKey: "k", ProxyURL: "http://vertex-proxy.example"}}
+	p := NewPolicy(cfg, nil)
+	for _, host := range []string{"global-proxy.example", "claude-proxy.example", "codex-proxy.example", "gemini-proxy.example", "vertex-proxy.example"} {
+		if !p.Allowed(host) {
+			t.Errorf("configured proxy-url host %q should be admitted", host)
+		}
+	}
+	if p.Allowed("other-proxy.example") {
+		t.Error("unconfigured proxy host must not be admitted")
+	}
+}
