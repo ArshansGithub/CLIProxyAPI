@@ -232,7 +232,8 @@ func newProxyAwareWebsocketDialer(ctx context.Context, cfg *config.Config, auth 
 			password, _ := setting.URL.User.Password()
 			proxyAuth = &proxy.Auth{User: username, Password: password}
 		}
-		socksDialer, errSOCKS5 := proxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, proxy.Direct)
+		// The forward dialer connects to the proxy host, so it carries the egress check.
+		socksDialer, errSOCKS5 := proxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, egress.GuardDialer(proxy.Direct, "codex.websocket socks5 proxy"))
 		if errSOCKS5 != nil {
 			log.Errorf("codex websockets executor: create SOCKS5 dialer failed: %v", errSOCKS5)
 			return dialer

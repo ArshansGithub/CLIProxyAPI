@@ -138,6 +138,12 @@ func configuredProxyURLs(cfg *config.Config) []string {
 	for _, e := range cfg.VertexCompatAPIKey {
 		out = append(out, e.ProxyURL)
 	}
+	for _, e := range cfg.XAIKey {
+		out = append(out, e.ProxyURL)
+	}
+	for _, e := range cfg.InteractionsKey {
+		out = append(out, e.ProxyURL)
+	}
 	for _, e := range cfg.OpenAICompatibility {
 		for _, k := range e.APIKeyEntries {
 			out = append(out, k.ProxyURL)

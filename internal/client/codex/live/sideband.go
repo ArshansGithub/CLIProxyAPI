@@ -735,7 +735,8 @@ func newSidebandDialer(proxyURL string) *websocket.Dialer {
 			password, _ := setting.URL.User.Password()
 			proxyAuth = &xproxy.Auth{User: username, Password: password}
 		}
-		socksDialer, errSOCKS5 := xproxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, xproxy.Direct)
+		// The forward dialer connects to the proxy host, so it carries the egress check.
+		socksDialer, errSOCKS5 := xproxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, egress.GuardDialer(xproxy.Direct, "codex.liveSideband socks5 proxy"))
 		if errSOCKS5 != nil {
 			log.Errorf("codex live sideband: create SOCKS5 dialer failed: %v", errSOCKS5)
 			return dialer
