@@ -662,6 +662,10 @@ func main() {
 
 	commandMode := vertexImport != "" || antigravityLogin || codexLogin || codexDeviceLogin || claudeLogin || kimiLogin || kimiAILogin || xaiLogin || devinLogin || metaLogin
 	cloudConfigMissing := isCloudDeploy && !configFileExists
+	if reason := lockedBuildRefusal(cfg != nil && cfg.Home.Enabled, false, false, false); reason != "" {
+		log.Error(reason)
+		os.Exit(1)
+	}
 	homeMode := configLoadedFromHome || (cfg != nil && cfg.Home.Enabled)
 	exampleAPIKeySafeMode := shouldEnableExampleAPIKeySafeMode(cfg, commandMode, tuiMode, standalone, cloudConfigMissing, homeMode)
 	serverOptions := []api.ServerOption(nil)

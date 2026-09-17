@@ -18,7 +18,15 @@ import (
 // writing an `&http.Transport{}` literal: an http.Client built with a
 // Transport field, and `new(http.Transport)`. Both are matched here so a file
 // cannot construct an unguarded client by spelling it differently.
-var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)|proxy\.SOCKS5\(|proxy\.FromURL\(`)
+//
+// The tail of the pattern catches what never touches net/http at all: raw
+// net/tls dials, an http2.Transport, and the client options of the Redis,
+// minio, database/sql and go-git libraries, which build their own network
+// stacks. A file matching those is either gated at the dial (utls_client.go)
+// or belongs to a feature the locked build refuses at startup (Home mode,
+// the network-backed token stores); either way it must be listed and
+// explained in coverage_allowlist.txt.
+var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)|proxy\.SOCKS5\(|proxy\.FromURL\(|net\.Dial(Timeout)?\(|tls\.Dial\(|http2\.Transport\{|redis\.Options\{|redis\.NewDialer|minio\.Options\{|sql\.Open\(|git\.PlainClone\(`)
 
 func TestNoUnguardedTransportConstruction(t *testing.T) {
 	root := repoRoot(t)

@@ -1,3 +1,9 @@
+//go:build !locked
+
+// These tests drive the Home-mode service lifecycle (config publishing, plugin sync and tasks, heartbeat failover) against a fake Redis. The locked build refuses Home mode at startup and in
+// syncHomePluginsWithClient, so the paths under test never run there; the
+// tagless build keeps covering upstream behaviour on every commit.
+
 package cliproxy
 
 import (
