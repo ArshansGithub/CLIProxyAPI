@@ -40,7 +40,9 @@ egress:
   mode: enforce
 
   # Extra hostnames to admit, beyond the ones above. Ports are ignored and
-  # matching is case-insensitive.
+  # matching is case-insensitive. Forward proxies are checked too: hosts from
+  # proxy-url fields in this file are admitted automatically, but a proxy_url
+  # stored in a credential file must be listed here.
   # extra-allow:
   #   - proxy.internal.example.com
 
