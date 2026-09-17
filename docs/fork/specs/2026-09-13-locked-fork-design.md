@@ -37,7 +37,9 @@ Surfaces found in the current binary, ranked by what a compromise yields:
 | Management api-call tool with `$TOKEN$` substitution | Live token sent to caller-chosen URL | Subject to egress policy |
 | Antigravity version manifest (3h) | A version string; hard-coded fallback exists | Nothing in code; gate blocks it |
 | `GITHUB_TOKEN` environment pickup | Token sent with updater requests | Removed with the updater |
-| Home (Redis) mode | Forces cooldowns off, disables API keys | Off by config; not compiled out |
+| Home (Redis) mode | Forces cooldowns off, disables API keys; dials Redis and the Home server outside the gate and accepts config, including the `egress` block, from that server | Refused at startup and vetoed on reload in the locked build (2026-09-17) |
+| Forward proxy hosts: `proxy-url` in config, per-credential `proxy_url`, and the management api-call tool's `proxy_url` field | The socket goes to the proxy host, which the destination check never saw; api-call sends a live token through it | Proxy host checked in the `Transport.Proxy` hook and at every SOCKS/CONNECT forward dial; configured `proxy-url` hosts admitted like base-urls (2026-09-17) |
+| Postgres, object (minio) and git (go-git) token stores | Client libraries dial outside net/http or with their own transports; never pass the gate | Refused at startup in the locked build; the file store is the only one (2026-09-17) |
 
 Rule for future surfaces: if the egress gate alone makes it inert and the code fails
 gracefully, no code change. A stub is added only where the gate is insufficient
