@@ -27,7 +27,8 @@ internal/egress/transport.go
 #
 # The files below match the raw-dial / third-party-client part of the scan.
 # internal/home/client.go dials Redis and the Home server through its own
-# dialers; internal/store/{gitstore,objectstore,postgresstore}.go use go-git,
+# dialers and internal/home/certificate.go dials the Home host for its
+# certificate bootstrap; internal/store/{gitstore,objectstore,postgresstore}.go use go-git,
 # minio and pgx. None passes the gate, so the locked build refuses Home mode
 # and those stores at startup (cmd/server/locked_refusal.go) and vetoes
 # home.enabled on reload. internal/util/ssh_helper.go does a UDP connect to
@@ -35,6 +36,7 @@ internal/egress/transport.go
 # wraps an http2.Transport around a connection its guarded http.Transport
 # already dialed.
 internal/home/client.go
+internal/home/certificate.go
 internal/store/gitstore.go
 internal/store/objectstore.go
 internal/store/postgresstore.go
