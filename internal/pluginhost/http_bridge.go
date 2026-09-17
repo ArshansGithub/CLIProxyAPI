@@ -614,7 +614,7 @@ func dialProxyTunnel(
 				Password: pwd,
 			}
 		}
-		socksDialer, errSOCKS := proxy.SOCKS5("tcp", proxyAddr, auth, &contextDialerWrapper{dial: dialerToUse})
+		socksDialer, errSOCKS := proxy.SOCKS5("tcp", proxyAddr, auth, &contextDialerWrapper{dial: egress.GuardDialContext(dialerToUse, "pluginhost.http_bridge socks5 proxy")})
 		if errSOCKS != nil {
 			return nil, fmt.Errorf("create SOCKS5 dialer: %w", errSOCKS)
 		}

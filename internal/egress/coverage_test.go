@@ -28,6 +28,9 @@ import (
 // explained in coverage_allowlist.txt.
 var rawTransport = regexp.MustCompile(`&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)|proxy\.SOCKS5\(|proxy\.FromURL\(|net\.Dial(Timeout)?\(|tls\.Dial\(|http2\.Transport\{|redis\.Options\{|redis\.NewDialer|minio\.Options\{|sql\.Open\(|git\.PlainClone\(`)
 
+// socksDialer matches the constructors whose forward dialer must be guarded.
+var socksDialer = regexp.MustCompile(`proxy\.SOCKS5\(|proxy\.FromURL\(`)
+
 func TestNoUnguardedTransportConstruction(t *testing.T) {
 	root := repoRoot(t)
 	allowed := map[string]bool{}
@@ -55,6 +58,17 @@ func TestNoUnguardedTransportConstruction(t *testing.T) {
 			r, _ := filepath.Rel(root, path)
 			if !allowed[r] {
 				t.Errorf("%s constructs a raw transport/dialer or assigns .Proxy directly; guard it with egress and add it to coverage_allowlist.txt", r)
+				return nil
+			}
+			// An allowlisted file is trusted to guard what it builds, but a SOCKS
+			// or FromURL dialer is only guarded through its forward dialer, and
+			// that is easy to leave as proxy.Direct. Require the guard (GuardDialer,
+			// or GuardDialContext on a wrapped dial func) on the same line so the
+			// allowlist cannot hide it.
+			for i, line := range strings.Split(string(data), "\n") {
+				if socksDialer.MatchString(line) && !strings.Contains(line, "GuardDialer(") && !strings.Contains(line, "GuardDialContext(") {
+					t.Errorf("%s:%d builds a SOCKS/FromURL dialer whose forward dialer is not egress.GuardDialer; the socket to the proxy host would pass no check", r, i+1)
+				}
 			}
 			return nil
 		})

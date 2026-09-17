@@ -201,11 +201,10 @@ func BuildDialer(raw string) (proxy.Dialer, Mode, error) {
 	case ModeProxy:
 		// Both dialers connect to the proxy host through the forward dialer,
 		// which is where the egress check on that host lives.
-		forward := egress.GuardDialer(proxy.Direct, "proxyutil.BuildDialer proxy")
 		if setting.URL.Scheme == "http" || setting.URL.Scheme == "https" {
-			return &httpConnectDialer{proxyURL: setting.URL, dialer: forward}, setting.Mode, nil
+			return &httpConnectDialer{proxyURL: setting.URL, dialer: egress.GuardDialer(proxy.Direct, "proxyutil.BuildDialer connect proxy")}, setting.Mode, nil
 		}
-		dialer, errDialer := proxy.FromURL(setting.URL, forward)
+		dialer, errDialer := proxy.FromURL(setting.URL, egress.GuardDialer(proxy.Direct, "proxyutil.BuildDialer proxy"))
 		if errDialer != nil {
 			return nil, setting.Mode, fmt.Errorf("create proxy dialer failed: %w", errDialer)
 		}

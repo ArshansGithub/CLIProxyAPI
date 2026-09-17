@@ -98,8 +98,11 @@ func TestPolicyAdmitsConfiguredProxyURLHosts(t *testing.T) {
 	cfg.CodexKey = []config.CodexKey{{APIKey: "k", ProxyURL: "https://codex-proxy.example"}}
 	cfg.GeminiKey = []config.GeminiKey{{APIKey: "k", ProxyURL: "socks5h://gemini-proxy.example:1080"}}
 	cfg.VertexCompatAPIKey = []config.VertexCompatKey{{APIKey: "k", ProxyURL: "http://vertex-proxy.example"}}
+	cfg.XAIKey = []config.XAIKey{{APIKey: "k", ProxyURL: "http://xai-proxy.example"}}
+	cfg.InteractionsKey = []config.GeminiKey{{APIKey: "k", ProxyURL: "http://interactions-proxy.example"}}
+	cfg.OpenAICompatibility[0].APIKeyEntries = []config.OpenAICompatibilityAPIKey{{APIKey: "k", ProxyURL: "http://compat-proxy.example"}}
 	p := NewPolicy(cfg, nil)
-	for _, host := range []string{"global-proxy.example", "claude-proxy.example", "codex-proxy.example", "gemini-proxy.example", "vertex-proxy.example"} {
+	for _, host := range []string{"global-proxy.example", "claude-proxy.example", "codex-proxy.example", "gemini-proxy.example", "vertex-proxy.example", "xai-proxy.example", "interactions-proxy.example", "compat-proxy.example"} {
 		if !p.Allowed(host) {
 			t.Errorf("configured proxy-url host %q should be admitted", host)
 		}
