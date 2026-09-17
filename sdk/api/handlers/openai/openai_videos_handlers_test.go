@@ -564,7 +564,7 @@ func TestWriteVideoContentFromURLUsesPinnedAuthProxy(t *testing.T) {
 func TestWriteVideoContentFromURLFallsBackToGlobalProxy(t *testing.T) {
 	resetVideoAuthBindingsForTest(t)
 	// The gate runs on every request; this destination is inspected, never dialled.
-	egress.SetConfigWithBuiltin(nil, []string{"example.com"})
+	egress.SetConfigWithBuiltin(nil, []string{"example.com", "global-proxy.example.com"}) // the gate checks forward proxy hosts too
 
 	base := apihandlers.NewBaseAPIHandlers(&sdkconfig.SDKConfig{ProxyURL: "http://global-proxy.example.com:8080"}, nil)
 	handler := NewOpenAIAPIHandler(base)
