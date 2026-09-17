@@ -69,6 +69,7 @@ Three mechanisms, each independently tested, all switched on by the `locked` bui
 | Model catalog | fetched from `models.router-for.me` every 3h | embedded snapshot; reviewed refresh |
 | Outbound hosts | anything the code asks for | allowlist: provider hosts + configured `base-url`s + loopback + `egress.extra-allow` |
 | Startup | trusts whatever is on disk and online | fail-closed: loopback-only until the policy loads; install refuses a non-`-locked` binary |
+| Home mode, Postgres / object / git token stores | connect through their own client libraries, outside any gate | refused at startup; file store only |
 | Updates | pull a tag and hope | audit report with a checklist gates the rebase; every carried patch registered |
 | Claude Code cache | — | keepalive probing, per-session cache stats, `/cache.html` watch page, TUI Cache tab |
 
@@ -82,6 +83,12 @@ egress:
   extra-allow:         # hostnames beyond provider hosts and configured base-urls
     - my-oauth-callback.example
 ```
+
+The gate checks the host a socket actually goes to, not only the URL a request names: a
+forward proxy (`proxy-url` in config, a per-credential `proxy_url`, or the management
+api-call tool's `proxy_url` field) is checked at the proxy hook and at every SOCKS and
+CONNECT dial. Hosts from `proxy-url` fields in config are admitted automatically; a
+per-credential proxy host must be listed under `extra-allow`.
 
 A refused request fails with `egress: host "x" not permitted (site=..., mode=enforce)` and one
 error log line. In audit mode the same event is a warning, `egress audit: host "x" would be
