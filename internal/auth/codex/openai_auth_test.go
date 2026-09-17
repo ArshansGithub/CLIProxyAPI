@@ -166,7 +166,9 @@ func TestRefreshTokens_DeduplicatesConcurrentRefreshAcrossInstances(t *testing.T
 // the host still has to be permitted.
 func allowCodexProxyTestHost(t *testing.T) {
 	t.Helper()
-	egress.SetConfigWithBuiltin(nil, []string{"example.com"})
+	egress.SetConfigWithBuiltin(nil, []string{"example.com",
+		// Forward proxy hosts are checked by the gate too; admit the fakes these tests route through.
+		"proxy.example.com", "global.example.com", "override.example.com"})
 }
 
 func TestNewCodexAuthWithProxyURL_OverrideDirectDisablesProxy(t *testing.T) {

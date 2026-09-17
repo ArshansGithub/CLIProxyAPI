@@ -104,7 +104,10 @@ func TestBuildHTTPTransportDirectBypassesProxy(t *testing.T) {
 // the host still has to be permitted.
 func allowProxyTestHost(t *testing.T) {
 	t.Helper()
-	egress.SetConfigWithBuiltin(nil, []string{"example.com"})
+	// The proxy host is admitted too: since the egress gate checks the host a
+	// forward proxy socket goes to, a test proxy at proxy.example.com must be
+	// listed like a real one would be via proxy-url or extra-allow.
+	egress.SetConfigWithBuiltin(nil, []string{"example.com", "proxy.example.com"})
 }
 
 func TestBuildHTTPTransportHTTPProxy(t *testing.T) {
