@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/buildinfo"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/managementasset"
 	log "github.com/sirupsen/logrus"
 )
@@ -326,6 +328,16 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 		return
 	}
 	if data, ok := managementasset.EmbeddedPanel(); ok {
+		// Locked build: stamp the reviewed bundle at serve time so the page
+		// visibly says which build it is and what the egress gate is doing.
+		// The embedded bytes stay untouched; see managementasset.Brand.
+		policy := egress.Current()
+		data = managementasset.Brand(data, managementasset.LockedBadge{
+			Version:    buildinfo.Version,
+			PanelTag:   managementasset.PanelTag(),
+			EgressMode: policy.Mode(),
+			HostCount:  policy.HostCount(),
+		})
 		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
 		return
 	}
