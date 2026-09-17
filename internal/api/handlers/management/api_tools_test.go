@@ -22,7 +22,10 @@ import (
 // the same host set, which keeps the parallel tests independent of ordering.
 func allowAPICallTestHosts(t *testing.T) {
 	t.Helper()
-	egress.SetConfigWithBuiltin(nil, []string{"example.com", "upstream.invalid"})
+	egress.SetConfigWithBuiltin(nil, []string{"example.com", "upstream.invalid",
+		// Forward proxy hosts are checked by the gate too; admit the fakes these tests route through.
+		"proxy.example.com", "global-proxy.example.com", "request-proxy.example.com", "credential-proxy.example.com",
+		"gemini-proxy.example.com", "claude-proxy.example.com", "codex-proxy.example.com", "xai-proxy.example.com", "compat-proxy.example.com"})
 }
 
 func TestAPICallUsesRequestProxyURL(t *testing.T) {

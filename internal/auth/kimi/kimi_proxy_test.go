@@ -13,7 +13,9 @@ import (
 // the host still has to be permitted.
 func allowKimiProxyTestHost(t *testing.T) {
 	t.Helper()
-	egress.SetConfigWithBuiltin(nil, []string{"example.com"})
+	egress.SetConfigWithBuiltin(nil, []string{"example.com",
+		// Forward proxy hosts are checked by the gate too; admit the fakes these tests route through.
+		"proxy.example.com", "global.example.com", "override.example.com"})
 }
 
 func TestNewDeviceFlowClientWithDeviceIDAndProxyURL_OverrideDirectDisablesProxy(t *testing.T) {

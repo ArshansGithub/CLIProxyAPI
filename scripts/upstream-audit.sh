@@ -50,7 +50,7 @@ LOGIN_RE=$(paste -sd'|' "$TMPROOT/logins" | sed 's/|$//')
 cat > "$TMPROOT/sites.py" <<'PY'
 import os, re, sys
 root = sys.argv[1]
-rawTransport = re.compile(r'&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)')
+rawTransport = re.compile(r'&?http\.Transport\{|&?websocket\.Dialer\{|\.Proxy\s*=[^=]|http\.Client\{[^}]*Transport:|new\(http\.Transport\)|proxy\.SOCKS5\(|proxy\.FromURL\(')
 hits = []
 for rel in ('internal', 'sdk', 'cmd'):
     for dirpath, _, names in os.walk(os.path.join(root, rel)):

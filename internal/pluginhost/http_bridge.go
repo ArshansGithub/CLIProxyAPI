@@ -591,6 +591,11 @@ func dialProxyTunnel(
 		}
 	}
 	proxyAddr := net.JoinHostPort(pHost, pPort)
+	// Every branch below opens a socket to proxyAddr (SOCKS forward dial, raw
+	// CONNECT dial, or the custom TLS dial), so the egress check sits here.
+	if errEgress := egress.CheckHostPort(proxyAddr, "pluginhost.http_bridge proxy"); errEgress != nil {
+		return nil, errEgress
+	}
 
 	dialerToUse := baseDial
 	if dialerToUse == nil {
