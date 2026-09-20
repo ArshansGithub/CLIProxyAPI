@@ -15,7 +15,7 @@ import (
 )
 
 func TestGuardedTransportRefusesUnlistedHost(t *testing.T) {
-	SetConfigWithBuiltin(testConfig("enforce"), nil)
+	setConfigForTest(testConfig("enforce"), nil)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(200) }))
 	defer srv.Close()
 	client := &http.Client{Transport: GuardTransport(&http.Transport{}, "test.guarded")}
@@ -31,7 +31,7 @@ func TestGuardedTransportRefusesUnlistedHost(t *testing.T) {
 }
 
 func TestGuardTransportPreservesExistingProxyFunc(t *testing.T) {
-	SetConfigWithBuiltin(testConfig("enforce", "api.example.com"), nil)
+	setConfigForTest(testConfig("enforce", "api.example.com"), nil)
 	called := false
 	tr := &http.Transport{Proxy: func(r *http.Request) (*url.URL, error) { called = true; return nil, nil }}
 	GuardTransport(tr, "test.preserve")
@@ -42,7 +42,7 @@ func TestGuardTransportPreservesExistingProxyFunc(t *testing.T) {
 }
 
 func TestGuardWebsocketDialerRefuses(t *testing.T) {
-	SetConfigWithBuiltin(testConfig("enforce"), nil)
+	setConfigForTest(testConfig("enforce"), nil)
 	d := GuardWebsocketDialer(&websocket.Dialer{}, "test")
 	req, _ := http.NewRequest("GET", "https://evil.example.net/ws", nil)
 	if _, err := d.Proxy(req); !errors.Is(err, ErrNotPermitted) {
@@ -51,7 +51,7 @@ func TestGuardWebsocketDialerRefuses(t *testing.T) {
 }
 
 func TestRoundTripperWrapperRefuses(t *testing.T) {
-	SetConfigWithBuiltin(testConfig("enforce"), nil)
+	setConfigForTest(testConfig("enforce"), nil)
 	rt := RoundTripper(http.DefaultTransport, "test")
 	req, _ := http.NewRequest("GET", "https://evil.example.net/", nil)
 	if _, err := rt.RoundTrip(req); !errors.Is(err, ErrNotPermitted) {
@@ -93,7 +93,7 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { re
 
 func TestWrapProxyFuncRefusesUnlistedProxyHost(t *testing.T) {
 	t.Cleanup(resetForTest)
-	SetConfigWithBuiltin(testConfig("enforce"), []string{"api.anthropic.com"})
+	setConfigForTest(testConfig("enforce"), []string{"api.anthropic.com"})
 	next := func(*http.Request) (*url.URL, error) { return url.Parse("http://proxy.evil.example:8080") }
 	req, _ := http.NewRequest(http.MethodGet, "https://api.anthropic.com/v1/messages", nil)
 	_, err := WrapProxyFunc(next, "test.site")(req)
@@ -107,7 +107,7 @@ func TestWrapProxyFuncRefusesUnlistedProxyHost(t *testing.T) {
 
 func TestWrapProxyFuncAllowsListedProxyHost(t *testing.T) {
 	t.Cleanup(resetForTest)
-	SetConfigWithBuiltin(testConfig("enforce", "proxy.corp.example"), []string{"api.anthropic.com"})
+	setConfigForTest(testConfig("enforce", "proxy.corp.example"), []string{"api.anthropic.com"})
 	next := func(*http.Request) (*url.URL, error) { return url.Parse("http://proxy.corp.example:8080") }
 	req, _ := http.NewRequest(http.MethodGet, "https://api.anthropic.com/v1/messages", nil)
 	u, err := WrapProxyFunc(next, "test.site")(req)
@@ -118,7 +118,7 @@ func TestWrapProxyFuncAllowsListedProxyHost(t *testing.T) {
 
 func TestGuardDialerRefusesUnlistedHost(t *testing.T) {
 	t.Cleanup(resetForTest)
-	SetConfigWithBuiltin(testConfig("enforce"), nil)
+	setConfigForTest(testConfig("enforce"), nil)
 	d := GuardDialer(proxy.Direct, "test.dialer")
 	if _, err := d.Dial("tcp", "proxy.evil.example:1080"); !errors.Is(err, ErrNotPermitted) {
 		t.Fatalf("Dial to unlisted host must be refused before connecting, got %v", err)
@@ -130,7 +130,7 @@ func TestGuardDialerRefusesUnlistedHost(t *testing.T) {
 
 func TestGuardDialContextRefusesUnlistedHost(t *testing.T) {
 	t.Cleanup(resetForTest)
-	SetConfigWithBuiltin(testConfig("enforce"), nil)
+	setConfigForTest(testConfig("enforce"), nil)
 	called := false
 	fn := GuardDialContext(func(context.Context, string, string) (net.Conn, error) { called = true; return nil, nil }, "test.dialctx")
 	if _, err := fn(context.Background(), "tcp", "proxy.evil.example:1080"); !errors.Is(err, ErrNotPermitted) || called {
@@ -143,7 +143,7 @@ func TestGuardDialContextRefusesUnlistedHost(t *testing.T) {
 
 func TestCheckHostPortStripsPort(t *testing.T) {
 	t.Cleanup(resetForTest)
-	SetConfigWithBuiltin(testConfig("enforce", "proxy.corp.example"), nil)
+	setConfigForTest(testConfig("enforce", "proxy.corp.example"), nil)
 	if err := CheckHostPort("proxy.corp.example:8080", "s"); err != nil {
 		t.Fatalf("listed host:port should pass, got %v", err)
 	}
