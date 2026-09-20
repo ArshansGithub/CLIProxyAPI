@@ -50,7 +50,7 @@ func TestPolicyCheckAuditAllowsButRecords(t *testing.T) {
 }
 
 func TestCheckURLUsesHostnameOnly(t *testing.T) {
-	SetConfigWithBuiltin(testConfig("enforce"), []string{"api.anthropic.com"})
+	setConfigForTest(testConfig("enforce"), []string{"api.anthropic.com"})
 	u, _ := url.Parse("https://api.anthropic.com:443/v1/messages?x=1")
 	if err := CheckURL(u, "t"); err != nil {
 		t.Fatalf("unexpected: %v", err)
