@@ -26,9 +26,27 @@ type Policy struct {
 	auditRefusals atomic.Int64
 }
 
-// NewPolicy builds a policy from config and the built-in provider host list.
+// NewPolicy builds a policy from config and the built-in provider host list,
+// taking the egress settings from cfg.Egress. SetConfig instead calls
+// NewPolicyWithEgress so a reload cannot widen mode or extra-allow.
 func NewPolicy(cfg *config.Config, builtin []string) *Policy {
-	p := &Policy{hosts: map[string]struct{}{}, mode: config.EgressModeEnforce}
+	var eg config.EgressConfig
+	if cfg != nil {
+		eg = cfg.Egress
+	}
+	return NewPolicyWithEgress(cfg, builtin, eg)
+}
+
+// NewPolicyWithEgress builds a policy from cfg and builtin, but takes the mode
+// and the extra-allow list from eg rather than from cfg.Egress.
+//
+// Base-URL and proxy hosts still come from cfg: adding a provider at runtime is
+// ordinary use. Mode and extra-allow are different — they decide what the gate
+// refuses at all — so the caller supplies them and SetConfig pins them to the
+// values the process started with.
+func NewPolicyWithEgress(cfg *config.Config, builtin []string, eg config.EgressConfig) *Policy {
+	eg = eg.WithDefaults()
+	p := &Policy{hosts: map[string]struct{}{}, mode: eg.Mode}
 	add := func(raw string) {
 		if h := config.NormalizeEgressHost(raw); h != "" {
 			p.hosts[h] = struct{}{}
@@ -40,11 +58,10 @@ func NewPolicy(cfg *config.Config, builtin []string) *Policy {
 	for _, h := range builtin {
 		add(h)
 	}
+	for _, h := range eg.ExtraAllow {
+		add(h)
+	}
 	if cfg != nil {
-		p.mode = cfg.Egress.WithDefaults().Mode
-		for _, h := range cfg.Egress.ExtraAllow {
-			add(h)
-		}
 		for _, u := range append(configuredBaseURLs(cfg), configuredProxyURLs(cfg)...) {
 			if parsed, err := url.Parse(strings.TrimSpace(u)); err == nil {
 				add(parsed.Hostname())
