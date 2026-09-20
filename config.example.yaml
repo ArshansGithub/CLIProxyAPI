@@ -36,13 +36,20 @@ remote-management:
 # "enforce" refuses any connection to a host outside the allowlist; "audit" is
 # fail-open and only logs what would have been refused. Loopback, the built-in
 # provider hosts and every configured base URL are always allowed.
+#
+# mode and extra-allow are read once, at startup: a later config reload that
+# changes them is logged and ignored, and a restart is needed to apply it. They
+# are writable through PUT /v0/management/config.yaml, and the gate is meant to
+# still bound a process whose management key has leaked — so a reload must not
+# be able to set mode: audit or append to extra-allow. Base-URL and proxy hosts
+# are not pinned; adding a provider while the server runs still works.
 egress:
   mode: enforce
 
   # Extra hostnames to admit, beyond the ones above. Ports are ignored and
   # matching is case-insensitive. Forward proxies are checked too: hosts from
   # proxy-url fields in this file are admitted automatically, but a proxy_url
-  # stored in a credential file must be listed here.
+  # stored in a credential file must be listed here. Startup-only, as above.
   # extra-allow:
   #   - proxy.internal.example.com
 
