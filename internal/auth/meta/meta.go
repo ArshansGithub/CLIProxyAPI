@@ -438,7 +438,7 @@ func (a *MetaAuth) MintAPIKey(ctx context.Context, dcaToken string) (*MintedKeyR
 
 	mintURL := a.mintURL
 	if mintURL == "" {
-		if envMint := strings.TrimSpace(os.Getenv("META_MINT_URL")); envMint != "" {
+		if envMint := mintURLFromEnv(); envMint != "" {
 			mintURL = envMint
 		} else {
 			mintURL = "https://api.meta.ai/muse-code/key"

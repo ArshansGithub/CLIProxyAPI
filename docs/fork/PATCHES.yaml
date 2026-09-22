@@ -205,19 +205,6 @@
     test moved onto MergeStreamUsageDetail, and the prewarm regression test
     moved onto upstream's normalizeResponsesWebsocketPrewarmFollowup.
 
-- subject: "fix(openai): keep tool-result images off a text-only compat upstream"
-  layer: fix
-  upstream_pr: null
-  drop: >-
-    upstream applies its input-modalities normalization to the user message
-    4cd17293 relays tool-result images through
-  note: >-
-    v7.2.159's 4cd17293 hoists tool_result images into a following user message
-    before NormalizeOpenAIToolResultsTextOnly runs, so an
-    openai-compatibility model declared text-only receives the image anyway.
-    Upstream's own TestOpenAICompatExecutorToolResultContentByInputModalities
-    fails at v7.2.159 without this.
-
 # ----------------------------------------------------------- locked build ---
 
 - prefixes:

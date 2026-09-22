@@ -55,8 +55,12 @@ func init() {
 		"chatgpt.com", "api.openai.com", "auth.openai.com", "platform.openai.com")
 	Register("xai", // internal/auth/xai, internal/runtime/executor/xai_*
 		"api.x.ai", "auth.x.ai", "cli-chat-proxy.grok.com")
-	Register("kimi", // internal/auth/kimi
-		"api.kimi.com", "auth.kimi.com")
+	Register("kimi", // internal/auth/kimi, internal/runtime/executor/claude_signing.go (kimi.ai OAuth lane, v7.3.13)
+		"api.kimi.com", "auth.kimi.com", "api.kimi.ai", "auth.kimi.ai")
+	Register("meta", // internal/auth/meta, internal/runtime/executor/meta_executor.go (Muse Code, v7.3.13)
+		"api.meta.ai", "auth.meta.com")
+	Register("devin", // internal/auth/devin, internal/runtime/executor/helps/devin_wire.go (Cognition Connect-RPC, v7.3.13)
+		"api.devin.ai", "server.codeium.com")
 	Register("gemini", // internal/auth/gemini*, internal/auth/antigravity, internal/runtime/executor/gemini_*, internal/runtime/executor/antigravity_*
 		"cloudcode-pa.googleapis.com", "daily-cloudcode-pa.googleapis.com",
 		"daily-cloudcode-pa.sandbox.googleapis.com", "www.googleapis.com", "oauth2.googleapis.com",
