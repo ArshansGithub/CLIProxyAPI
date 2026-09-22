@@ -14,3 +14,8 @@ var codexClientModelsURLs = []string{
 	"https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/codex_client_models.json",
 	"https://models.router-for.me/codex_client_models.json",
 }
+
+var devinModelsURLs = []string{
+	"https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/devin_models.json",
+	"https://models.router-for.me/devin_models.json",
+}
