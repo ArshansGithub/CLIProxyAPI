@@ -17,6 +17,7 @@
 sdk/proxyutil/proxy.go
 internal/runtime/executor/antigravity_executor.go
 internal/runtime/executor/helps/utls_client.go
+internal/runtime/executor/helps/proxy_helpers.go
 internal/auth/claude/utls_transport.go
 internal/api/handlers/management/api_tools.go
 internal/api/handlers/management/plugin_quota.go

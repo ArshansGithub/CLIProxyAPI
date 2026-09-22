@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
@@ -97,14 +98,17 @@ func NewDevinHTTPClient(ctx context.Context, cfg *config.Config, auth *cliproxya
 			if dt, ok := http.DefaultTransport.(*http.Transport); ok {
 				base = dt.Clone()
 			} else {
-				base = &http.Transport{}
+				// Not reachable in practice (DefaultTransport is an
+				// *http.Transport), but a bare literal here would have a nil
+				// Proxy and skip the egress gate, so guard it explicitly.
+				base = egress.GuardTransport(&http.Transport{}, "helps.NewDevinHTTPClient")
 			}
 		}
 		base.DisableCompression = true
 		return base, nil
 	})
 	if err != nil || tr == nil {
-		tr = &http.Transport{DisableCompression: true}
+		tr = egress.GuardTransport(&http.Transport{DisableCompression: true}, "helps.NewDevinHTTPClient")
 	}
 
 	return &http.Client{

@@ -1,5 +1,6 @@
-source=https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/
-models.json.sha256=9a823e6a5fecfb13b73fef9b2b6fe51b6a78dbd795428546860705cf2ceea9a3
-codex_client_models.json.sha256=428277c965eb5bab56a7b569048233aa6b876bb004e055ec9ea2a9061217d0f5
-snapshot-from=upstream v7.2.159 embedded catalogs
-reviewed=2026-09-13
+source=upstream v7.3.13 embedded catalogs (internal/registry/models at tag v7.3.13)
+models.json.sha256=728723916960927804898856120dd758a249ddd8af7183fc8c9b7c797a6706b1
+codex_client_models.json.sha256=7b15fec55ed279c2a0f4b6dfd1f7d2617d7c9f22e94d385242a8cd9534411d38
+devin_models.json.sha256=56ea53c34f402116b4dc457d3db5cc73205bce7acc1fbe2990680e05206caf1a
+snapshot-from=upstream v7.3.13 embedded catalogs
+reviewed=2026-09-22

@@ -9,3 +9,5 @@ const remoteModelRefreshEnabled = false
 var modelsURLs []string
 
 var codexClientModelsURLs []string
+
+var devinModelsURLs []string
