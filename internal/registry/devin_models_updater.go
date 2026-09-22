@@ -8,11 +8,6 @@ import (
 
 const maxDevinModelsSize = 8 << 20
 
-var devinModelsURLs = []string{
-	"https://raw.githubusercontent.com/router-for-me/models/refs/heads/main/devin_models.json",
-	"https://models.router-for.me/devin_models.json",
-}
-
 // StartDevinModelsUpdater starts a background updater that fetches the
 // Devin model catalog immediately and refreshes it every 3 hours.
 // Safe to call multiple times; only one updater runs.

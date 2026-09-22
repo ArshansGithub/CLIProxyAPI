@@ -9,10 +9,17 @@ import (
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 )
 
 func TestNewProxyAwareHTTPClientRequestProxyOverridesAuthAndGlobal(t *testing.T) {
-	t.Parallel()
+	// The egress gate checks the destination and the forward-proxy host on
+	// every Transport.Proxy call; admit the fakes this test inspects.
+	// Not t.Parallel(): the policy is process-global and other tests in this
+	// package install their own.
+	egress.SetConfigWithBuiltin(nil, append(egress.BuiltinHosts(),
+		"upstream.example", "request-proxy.example", "auth-proxy.example", "global-proxy.example.com"))
 
 	ctx := coreexecutor.WithRequestProxyURL(context.Background(), "http://request-proxy.example:8081")
 	client := NewProxyAwareHTTPClient(
