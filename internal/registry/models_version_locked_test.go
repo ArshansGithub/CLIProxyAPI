@@ -24,6 +24,7 @@ func TestEmbeddedCatalogsMatchModelsVersionPin(t *testing.T) {
 	}{
 		{"models.json.sha256", embeddedModelsJSON},
 		{"codex_client_models.json.sha256", embeddedCodexClientModelsJSON},
+		{"devin_models.json.sha256", embeddedDevinModelsJSON},
 	} {
 		want, ok := pins[tc.key]
 		if !ok {

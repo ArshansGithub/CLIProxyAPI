@@ -9,10 +9,17 @@ import (
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 )
 
 func TestRequestProxyOverridesCredentialProxyForWebsocketAndAntigravity(t *testing.T) {
-	t.Parallel()
+	// The egress gate checks the destination and the forward-proxy host on
+	// every Proxy call; admit the fakes this test inspects.
+	// Not t.Parallel(): the policy is process-global and other tests in this
+	// package install their own.
+	egress.SetConfigWithBuiltin(nil, append(egress.BuiltinHosts(),
+		"upstream.example", "request-proxy.example", "auth-proxy.example", "global-proxy.example"))
 
 	const requestProxy = "http://request-proxy.example:8081"
 	ctx := cliproxyexecutor.WithRequestProxyURL(context.Background(), requestProxy)

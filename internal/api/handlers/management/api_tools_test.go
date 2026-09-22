@@ -36,7 +36,9 @@ func allowAPICallTestHosts(t *testing.T) {
 	egress.SetConfigWithBuiltin(nil, []string{"example.com", "upstream.invalid",
 		// Forward proxy hosts are checked by the gate too; admit the fakes these tests route through.
 		"proxy.example.com", "global-proxy.example.com", "request-proxy.example.com", "credential-proxy.example.com",
-		"gemini-proxy.example.com", "claude-proxy.example.com", "codex-proxy.example.com", "xai-proxy.example.com", "compat-proxy.example.com"})
+		"gemini-proxy.example.com", "claude-proxy.example.com", "codex-proxy.example.com", "xai-proxy.example.com", "compat-proxy.example.com",
+		// v7.3.13 adds a Meta credential and a mint endpoint that the Meta tests point at a fake host.
+		"meta-proxy.example.com", "meta.invalid"})
 }
 
 func TestAPICallUsesRequestProxyURL(t *testing.T) {
@@ -667,6 +669,7 @@ func TestResolveMetaToken_ConcurrentSingleflight(t *testing.T) {
 }
 
 func TestResolveMetaTokenUsesRequestProxyWithoutSavingOverride(t *testing.T) {
+	allowAPICallTestHosts(t)
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer dca:proxy-test" {
 			t.Error("mint request did not carry the DCA token")

@@ -17,9 +17,15 @@ import (
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/egress"
 )
 
 func TestVertexAccessTokenUsesCredentialProxyNotRequestProxy(t *testing.T) {
+	// The token exchange goes to oauth2.googleapis.com through a loopback
+	// proxy; the egress gate checks the destination, so install the built-in
+	// provider hosts (a bare test process has none).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	var requestHits atomic.Int32
 	var authHits atomic.Int32
 	var globalHits atomic.Int32

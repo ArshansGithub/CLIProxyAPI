@@ -359,8 +359,17 @@ func TestRegisterModelsForAuth_AntigravityFetchesWebSearchCapability(t *testing.
 	if agentModel == nil {
 		t.Fatal("expected gemini-pro-agent to be registered")
 	}
-	if agentModel.SupportsWebSearch {
-		t.Fatal("gemini-pro-agent should not support web search")
+	// The fetch's webSearchModelIds must not grant search to a model it does
+	// not name; the static definition alone decides. Upstream v7.3.13
+	// (24303543) flipped gemini-pro-agent's static flag to true without
+	// updating this assertion, so compare with the catalog instead of a
+	// hard-coded false.
+	staticAgentModel := staticByID["gemini-pro-agent"]
+	if staticAgentModel == nil {
+		t.Fatal("expected static gemini-pro-agent definition")
+	}
+	if agentModel.SupportsWebSearch != staticAgentModel.SupportsWebSearch {
+		t.Fatalf("gemini-pro-agent web search = %v, want the static definition's %v (fetch must not override it)", agentModel.SupportsWebSearch, staticAgentModel.SupportsWebSearch)
 	}
 	if staticOnlyModel == nil {
 		t.Fatal("expected static-only Antigravity model to remain registered")
