@@ -137,7 +137,9 @@
   layer: feat
   upstream_pr: null
   drop: "drop together with the /cache.html watch page above"
-  note: "Presentation fixes for the built-in watch page."
+  note: >-
+    Presentation fixes for the built-in watch page, and the accounts table
+    with the reset-perceived-quota control (v8.0.3 rebase, 2026-09-28).
 
 - subjects:
     - "fix(claude): treat the pinned Claude Code version as a floor, not a lock"
@@ -191,6 +193,11 @@
   layer: feat
   upstream_pr: null
   drop: "never while this fork is built and installed from source"
+
+- subject: "fix: raise stale test fixtures to the 2.1.280 client floor"
+  layer: fix
+  upstream_pr: null
+  drop: "fold into #5444's test the next time that patch is rewritten"
 
 - subject: "fix: reconcile carried patches with v7.2.159's equivalents"
   layer: fix
