@@ -137,8 +137,8 @@ func TestResolveClaudeDeviceProfileLocalAdoptsNewerPatchAboveFloor(t *testing.T)
 	headers := claudeDeviceHeaders("claude-cli/2.1.281 (external, cli)")
 
 	profile := resolveClaudeDeviceProfileLocal(auth, "api-key", headers, nil)
-	if profile.UserAgent != "claude-cli/2.1.263 (external, cli)" {
-		t.Fatalf("profile above the floor = %#v, want the client's own 2.1.263 user agent", profile)
+	if profile.UserAgent != "claude-cli/2.1.281 (external, cli)" {
+		t.Fatalf("profile above the floor = %#v, want the client's own 2.1.281 user agent", profile)
 	}
 }
 
