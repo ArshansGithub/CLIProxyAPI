@@ -2,6 +2,8 @@ module github.com/router-for-me/CLIProxyAPI/v8
 
 go 1.26.10
 
+toolchain go1.26.8
+
 require (
 	github.com/MoeForge/moego v0.1.0-alpha.1
 	github.com/andybalholm/brotli v1.0.6
