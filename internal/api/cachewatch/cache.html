@@ -131,6 +131,8 @@ ol.events li { display: grid; grid-template-columns: 72px 78px 1fr; gap: 12px; p
 ol.events li.alert { border-left-color: var(--critical); }
 ol.events li.cold-read { border-left-color: var(--serious); }
 ol.events li.partial-miss { border-left-color: var(--warn); }
+ol.events li.operator { border-left-color: var(--read); }
+table.accounts tr.account.idle td { color: var(--ink-2); }
 ol.events .when { color: var(--ink-3); white-space: nowrap; }
 ol.events .who { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; }
 ol.events .who button { padding: 0; border: 0; background: none; color: var(--focus); font: inherit; cursor: pointer; }
@@ -204,6 +206,23 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
     <div id="sessions-empty" class="empty hidden"></div>
   </section>
 
+  <section>
+    <div class="row-head">
+      <h2>Accounts</h2>
+      <div class="controls"><span id="account-count" class="dim"></span></div>
+    </div>
+    <div class="table-wrap">
+    <table class="sessions accounts">
+      <thead><tr>
+        <th>Account</th><th>Provider</th><th>Routing</th><th>Why</th><th>Until</th><th></th>
+      </tr></thead>
+      <tbody id="accounts"></tbody>
+    </table>
+    </div>
+    <div id="accounts-empty" class="empty hidden"></div>
+    <p class="muted" style="margin:8px 0 0">"Reset perceived quota" clears what the proxy remembers about an account's cooldown and quota so it routes there again. It changes nothing at Anthropic: if the account is still out of quota upstream, the next request marks it again.</p>
+  </section>
+
   <div class="two">
     <section>
       <div class="row-head">
@@ -228,7 +247,7 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
   const POLL_MS = 5000;
   const LIVE_WINDOW_MS = 15 * 60 * 1000;
   const state = {
-    key: null, stats: null, keepalive: null, versions: null,
+    key: null, stats: null, keepalive: null, versions: null, accounts: null, resetting: {},
     events: [], latestSeq: 0, open: null, filterSession: null,
     lastOk: 0, lastErr: null, serverVersion: '', showIdle: false, timer: null,
     detail: {},
@@ -259,13 +278,15 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
 
   async function poll() {
     try {
-      const [stats, keepalive, versions, events] = await Promise.all([
+      const [stats, keepalive, versions, events, accounts] = await Promise.all([
         api('/v0/management/cache-stats'),
         api('/v0/management/cache-keepalive').catch((e) => (e.status === 404 ? { enabled: false, sessions: [], counters: {} } : Promise.reject(e))),
         api('/v0/management/claude-client-versions').catch(() => null),
         api('/v0/management/cache-stats/events?after=' + state.latestSeq + '&limit=300').catch((e) => (e.status === 404 ? null : Promise.reject(e))),
+        api('/v0/management/auth-files').catch(() => null),
       ]);
       state.stats = stats; state.keepalive = keepalive; state.versions = versions;
+      if (accounts) state.accounts = accounts;
       if (events) {
         if (events.latest_seq < state.latestSeq) state.events = [];
         state.events = state.events.concat(events.events || []);
@@ -328,7 +349,7 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
 
   // ---- render ------------------------------------------------------------
   function render() {
-    renderHeader(); renderBanners(); renderSessions(); renderEvents(); renderKeepalive();
+    renderHeader(); renderBanners(); renderSessions(); renderAccounts(); renderEvents(); renderKeepalive();
     $('foot').textContent = (state.serverVersion ? 'Proxy ' + state.serverVersion + '. ' : '') + 'Polls every 5 seconds. A session counts as live for 15 minutes after its last request. "Lost" is cached tokens a request could have read but did not; "cold" is a request that read nothing from cache.';
   }
 
@@ -479,6 +500,61 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
     svgEl.addEventListener('mouseleave', () => { hover.classList.add('hidden'); tip.classList.add('hidden'); });
     return wrap;
   }
+
+  // Accounts: what the proxy currently believes about each account, and a way
+  // to clear a belief that Anthropic's own quota reset has already made stale.
+  function accountBlock(f) {
+    const cds = Array.isArray(f.cooldowns) ? f.cooldowns : [];
+    const active = cds.filter((c) => c && c.next_retry_after && Date.parse(c.next_retry_after) > Date.now());
+    const authUntil = f.next_retry_after && Date.parse(f.next_retry_after) > Date.now() ? Date.parse(f.next_retry_after) : 0;
+    const until = Math.max(authUntil, ...active.map((c) => Date.parse(c.next_retry_after)));
+    const reasons = Array.from(new Set(active.map((c) => c.reason || (c.quota && c.quota.reason) || ''))).filter(Boolean);
+    const models = Array.from(new Set(active.map((c) => c.model).filter(Boolean)));
+    const blocked = !!(f.disabled || f.unavailable || until > 0 || f.status === 'error' || f.status === 'disabled');
+    return { until, reasons, models, blocked };
+  }
+  function renderAccounts() {
+    const body = $('accounts'); const a = state.accounts; const empty = $('accounts-empty');
+    if (!a || !Array.isArray(a.files)) {
+      body.innerHTML = ''; $('account-count').textContent = '';
+      empty.textContent = a ? 'The proxy returned no account list.' : 'Account list not loaded yet.';
+      empty.classList.remove('hidden'); return;
+    }
+    const files = a.files.filter((f) => f && !f.runtime_only && (f.type || f.provider));
+    files.sort((x, y) => (Number(accountBlock(y).blocked) - Number(accountBlock(x).blocked)) || String(x.email || x.name || '').localeCompare(String(y.email || y.name || '')));
+    const notRoutable = files.filter((f) => accountBlock(f).blocked).length;
+    $('account-count').textContent = files.length + ' account' + (files.length === 1 ? '' : 's') + (notRoutable ? ', ' + notRoutable + ' not routable' : ', all routable');
+    body.innerHTML = '';
+    for (const f of files) {
+      const b = accountBlock(f);
+      const label = esc(f.email || f.label || f.name || f.id);
+      let routing, why;
+      if (f.disabled) { routing = '<span class="dim">disabled</span>'; why = 'turned off in the panel'; }
+      else if (b.blocked) {
+        routing = '<span class="miss">skipped</span>';
+        why = [b.reasons.join(', '), b.models.length ? b.models.length + ' model' + (b.models.length > 1 ? 's' : '') + ': ' + b.models.map(shortModel).join(', ') : '', f.status_message || ''].filter(Boolean).join('; ') || (f.status || 'unavailable');
+      } else { routing = '<span class="hit">routable</span>'; why = f.status_message || ''; }
+      const untilText = b.until ? 'in ' + dur(b.until - Date.now()) + ' <span class="dim">(' + esc(clock(new Date(b.until).toISOString())) + ')</span>' : '<span class="dim">–</span>';
+      const busy = !!state.resetting[f.auth_index];
+      const btn = f.auth_index ? `<button type="button" class="reset-quota${b.blocked ? '' : ' quiet'}" data-index="${esc(f.auth_index)}"${busy ? ' disabled' : ''}>${busy ? 'Resetting' : 'Reset perceived quota'}</button>` : '';
+      body.appendChild(el(`<tr class="account${b.blocked ? '' : ' idle'}"><td class="id" title="${esc(f.name || '')}">${label}</td><td>${esc(f.provider || f.type)}</td><td>${routing}</td><td>${why ? esc(why) : '<span class="dim">–</span>'}</td><td>${untilText}</td><td class="num">${btn}</td></tr>`));
+    }
+    empty.textContent = files.length ? '' : 'No accounts are loaded.';
+    empty.classList.toggle('hidden', files.length > 0);
+  }
+  $('accounts').addEventListener('click', async (ev) => {
+    const btn = ev.target.closest('button.reset-quota'); if (!btn) return;
+    const index = btn.dataset.index; if (!index || state.resetting[index]) return;
+    state.resetting[index] = true; renderAccounts();
+    try {
+      const res = await api('/v0/management/reset-quota', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ auth_index: index }) });
+      state.lastErr = null;
+      try { state.accounts = await api('/v0/management/auth-files'); } catch (_) {}
+      const n = res && Array.isArray(res.models) ? res.models.length : 0;
+      state.events.push({ seq: 0, at: new Date().toISOString(), kind: 'operator', session_id: '', short_id: 'operator', cause: 'Reset perceived quota on ' + index + (n ? ' (' + n + ' model state' + (n > 1 ? 's' : '') + ' cleared)' : '') + '. The account is routable again until upstream says otherwise.' });
+    } catch (e) { state.lastErr = 'reset failed: ' + (e.detail || e.message); }
+    delete state.resetting[index]; render();
+  });
 
   function renderEvents() {
     const ol = $('events'); ol.innerHTML = '';
