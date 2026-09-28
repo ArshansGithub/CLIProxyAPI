@@ -24,7 +24,7 @@ func TestClaudeExecutor_ConfirmedNativeSubagentAndProbeKeepCallerTTLAndBetas(t *
 	const userID = `{"device_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","account_uuid":"","session_id":"11111111-2222-4333-8444-555555555555"}`
 	confirmedHeaders := func(betas string) http.Header {
 		return http.Header{
-			"User-Agent":                  {"claude-cli/2.1.258 (external, cli)"},
+			"User-Agent":                  {"claude-cli/2.1.280 (external, cli)"},
 			"X-App":                       {"cli"},
 			"Anthropic-Beta":              {betas},
 			"X-Claude-Code-Session-Id":    {sessionID},
