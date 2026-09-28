@@ -1,6 +1,6 @@
-source=upstream v7.3.13 embedded catalogs (internal/registry/models at tag v7.3.13)
-models.json.sha256=728723916960927804898856120dd758a249ddd8af7183fc8c9b7c797a6706b1
+source=upstream v8.0.3 embedded catalogs (internal/registry/models at tag v8.0.3) plus the fork row claude-sonnet-5-5
+models.json.sha256=76e5bdaa6a4003706e37a9146ea1f175ac2b4061bbb67d2e1d88196868071d65
 codex_client_models.json.sha256=7b15fec55ed279c2a0f4b6dfd1f7d2617d7c9f22e94d385242a8cd9534411d38
-devin_models.json.sha256=56ea53c34f402116b4dc457d3db5cc73205bce7acc1fbe2990680e05206caf1a
-snapshot-from=upstream v7.3.13 embedded catalogs
-reviewed=2026-09-22
+devin_models.json.sha256=1aee55bcd7af6be17d18c04046d25aba9c63a635af1088bfa4b7dc04d4be3360
+snapshot-from=upstream v8.0.3 embedded catalogs; claude-sonnet-5-5 added by the fork on 2026-09-28 (Claude Code 2.1.284 ships it; neither catalog carried it yet)
+reviewed=2026-09-28
