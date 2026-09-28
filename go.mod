@@ -2,6 +2,8 @@ module github.com/router-for-me/CLIProxyAPI/v8
 
 go 1.26.0
 
+toolchain go1.26.8
+
 require (
 	github.com/andybalholm/brotli v1.0.6
 	github.com/atotto/clipboard v0.1.4
