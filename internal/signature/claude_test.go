@@ -910,8 +910,8 @@ func TestClaudeModelFreeCAISSignature_UsesStructuralGenerationRecognition(t *tes
 		parts claudeModelFreeCAISParts
 	}{
 		{"captured field shape", defaultClaudeModelFreeCAISParts()},
-		// The generation allowlists are deliberately Cartesian. These cases pin
-		// every currently accepted pair without claiming that every pair has
+		// The generation floors are independent. These cases pin
+		// pairs above both floors without claiming that every pair has
 		// appeared in model-free captures.
 		{"known envelope 2 with channel 17", func() claudeModelFreeCAISParts {
 			p := defaultClaudeModelFreeCAISParts()
@@ -927,6 +927,23 @@ func TestClaudeModelFreeCAISSignature_UsesStructuralGenerationRecognition(t *tes
 			p := defaultClaudeModelFreeCAISParts()
 			p.envelopeVersion = 2
 			p.channelID = 16
+			return p
+		}()},
+		{"envelope 4 with channel 18 (fable-5-1 and opus-5-5 since 2026-09-19)", func() claudeModelFreeCAISParts {
+			p := defaultClaudeModelFreeCAISParts()
+			p.channelID = 18
+			return p
+		}()},
+		{"known envelope 2 with channel 18", func() claudeModelFreeCAISParts {
+			p := defaultClaudeModelFreeCAISParts()
+			p.envelopeVersion = 2
+			p.channelID = 18
+			return p
+		}()},
+		{"unseen envelope 5 with unseen channel 23 (future generations pass)", func() claudeModelFreeCAISParts {
+			p := defaultClaudeModelFreeCAISParts()
+			p.envelopeVersion = 5
+			p.channelID = 23
 			return p
 		}()},
 		{"channel version absent", func() claudeModelFreeCAISParts {
@@ -1001,14 +1018,14 @@ func TestClaudeModelFreeCAISSignature_UsesStructuralGenerationRecognition(t *tes
 		name  string
 		parts claudeModelFreeCAISParts
 	}{
-		{"unknown envelope version", func() claudeModelFreeCAISParts {
+		{"envelope version below the floor", func() claudeModelFreeCAISParts {
 			p := defaultClaudeModelFreeCAISParts()
-			p.envelopeVersion = 5
+			p.envelopeVersion = 1
 			return p
 		}()},
-		{"unknown channel id", func() claudeModelFreeCAISParts {
+		{"channel id below the floor", func() claudeModelFreeCAISParts {
 			p := defaultClaudeModelFreeCAISParts()
-			p.channelID = 18
+			p.channelID = 15
 			return p
 		}()},
 		{"legacy-only channel id", func() claudeModelFreeCAISParts {
@@ -1142,8 +1159,8 @@ func TestClaudeModelFreeCAISSignature_UnknownGenerationReasonIsSpecific(t *testi
 		mutate func(*claudeModelFreeCAISParts)
 		want   string
 	}{
-		{"channel id", func(parts *claudeModelFreeCAISParts) { parts.channelID = 18 }, "unknown channel_id 18"},
-		{"envelope version", func(parts *claudeModelFreeCAISParts) { parts.envelopeVersion = 5 }, "unknown envelope version 5"},
+		{"channel id", func(parts *claudeModelFreeCAISParts) { parts.channelID = 15 }, "unknown channel_id 15"},
+		{"envelope version", func(parts *claudeModelFreeCAISParts) { parts.envelopeVersion = 1 }, "unknown envelope version 1"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1279,7 +1296,7 @@ func TestClassifyUnknownCAISGeneration(t *testing.T) {
 	// t.Fatalf below on "ok = false" catches directly.
 	t.Run("agrees with the real sanitizer-produced reason", func(t *testing.T) {
 		parts := defaultClaudeModelFreeCAISParts()
-		parts.envelopeVersion = 5
+		parts.envelopeVersion = 1
 		signature := parts.encode()
 		input := []byte(`{"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"reason","signature":"` + signature + `"},{"type":"text","text":"answer"}]}]}`)
 
@@ -1292,7 +1309,7 @@ func TestClassifyUnknownCAISGeneration(t *testing.T) {
 			t.Fatalf("decision.Reason = %q, want a sanitizer position prefix so this test exercises prefix tolerance", decision.Reason)
 		}
 
-		want := (&claudeCAISUnknownGenerationError{identifier: "envelope version", value: 5}).Error()
+		want := (&claudeCAISUnknownGenerationError{identifier: "envelope version", value: 1}).Error()
 		normalized, ok := ClassifyUnknownCAISGeneration(decision.Reason)
 		if !ok {
 			t.Fatalf("ClassifyUnknownCAISGeneration(%q) ok = false, want true", decision.Reason)
@@ -1313,7 +1330,7 @@ func TestClassifyUnknownCAISGeneration(t *testing.T) {
 func TestClaudeModelFreeCAISSignature_CarrierValidatedBeforeGeneration(t *testing.T) {
 	t.Run("unknown envelope version with missing carrier reports the carrier defect", func(t *testing.T) {
 		parts := defaultClaudeModelFreeCAISParts()
-		parts.envelopeVersion = 5
+		parts.envelopeVersion = 1
 		parts.includeCarrier = false
 		signature := parts.encode()
 
@@ -1332,7 +1349,7 @@ func TestClaudeModelFreeCAISSignature_CarrierValidatedBeforeGeneration(t *testin
 
 	t.Run("unknown channel_id with empty carrier reports the carrier defect", func(t *testing.T) {
 		parts := defaultClaudeModelFreeCAISParts()
-		parts.channelID = 18
+		parts.channelID = 15
 		parts.carrierLen = 0
 		signature := parts.encode()
 
@@ -1351,7 +1368,7 @@ func TestClaudeModelFreeCAISSignature_CarrierValidatedBeforeGeneration(t *testin
 
 	t.Run("unknown envelope version with a valid carrier still reports unknown generation", func(t *testing.T) {
 		parts := defaultClaudeModelFreeCAISParts()
-		parts.envelopeVersion = 5
+		parts.envelopeVersion = 1
 		signature := parts.encode()
 
 		_, err := InspectClaudeCAISSignature(signature)
