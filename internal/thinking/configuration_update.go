@@ -4,6 +4,10 @@ import (
 	"strings"
 
 	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func isResponsesFormat(format string) bool {
@@ -106,6 +110,38 @@ func StripConfigurationUpdates(body []byte) []byte {
 // StripConfigurationUpdatesDoc removes configuration_update input items on doc.
 func StripConfigurationUpdatesDoc(doc *ojson.Doc) {
 	_ = stripConfigurationUpdatesDoc(doc, true)
+}
+
+// stripConfigurationUpdatesLoggedDoc strips unsupported configuration_update
+// items and, when any carried a reasoning effort, warns with the model and the
+// effort that was dropped. A Codex client that changed effort mid-turn would
+// otherwise keep running at the top-level baseline with nothing in the log.
+func stripConfigurationUpdatesLoggedDoc(doc *ojson.Doc, docValid bool, provider, model string, modelInfo *registry.ModelInfo) bool {
+	dropped := extractConfigurationUpdateConfigDoc(doc, docValid)
+	if !stripConfigurationUpdatesDoc(doc, docValid) {
+		return false
+	}
+	if !hasThinkingConfig(dropped) {
+		return true
+	}
+	if modelInfo != nil && modelInfo.ID != "" {
+		model = modelInfo.ID
+	}
+	droppedEffort := string(dropped.Level)
+	switch dropped.Mode {
+	case ModeNone:
+		droppedEffort = string(LevelNone)
+	case ModeAuto:
+		droppedEffort = string(LevelAuto)
+	}
+	baseline := extractCodexConfigFromGetter(doc.Get)
+	log.WithFields(log.Fields{
+		"provider":       provider,
+		"model":          model,
+		"dropped_effort": droppedEffort,
+		"baseline":       string(baseline.Level),
+	}).Warn("thinking: configuration_update effort dropped (model does not support in-turn updates) |")
+	return true
 }
 
 // stripConfigurationUpdates removes unsupported Responses input items without
