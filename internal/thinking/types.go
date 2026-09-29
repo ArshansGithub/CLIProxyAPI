@@ -57,6 +57,9 @@ const (
 	// LevelMax sets maximum thinking effort.
 	// This is currently used by Claude 4.6 adaptive thinking (opus supports "max").
 	LevelMax ThinkingLevel = "max"
+	// LevelUltra is the Codex tier above max ("maximum reasoning with automatic
+	// task delegation"), advertised by GPT-6 Sol/Astra and GPT-5.6 Sol/Terra.
+	LevelUltra ThinkingLevel = "ultra"
 )
 
 // ThinkingConfig represents a unified thinking configuration.
