@@ -115,6 +115,10 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/cache-stats/events", s.mgmt.GetCacheStatsEvents)
 		mgmt.GET("/cache-stats/sessions/*id", s.mgmt.GetCacheStatsSession)
 		mgmt.DELETE("/cache-stats", s.mgmt.DeleteCacheStats)
+		// Thinking history stripped for unrecognized CAIS generations; the
+		// cache watch page shows a banner while this is non-zero.
+		mgmt.GET("/signature-drops", s.mgmt.GetSignatureDrops)
+		mgmt.DELETE("/signature-drops", s.mgmt.DeleteSignatureDrops)
 
 		mgmt.GET("/logs", s.mgmt.GetLogs)
 		mgmt.DELETE("/logs", s.mgmt.DeleteLogs)
