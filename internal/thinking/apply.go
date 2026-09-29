@@ -243,7 +243,7 @@ func applyThinking(body, sourceBody []byte, model string, fromFormat string, toF
 	responseTarget := providerFormat == "codex" || providerFormat == "xai"
 	supportsUpdates := modelInfo != nil && modelInfo.SupportConfigurationUpdate
 	if responseTarget && !supportsUpdates {
-		body = stripConfigurationUpdates(body)
+		body = stripConfigurationUpdatesLogged(body, providerFormat, baseModel, modelInfo)
 	}
 	nativeResponses := responseTarget && isResponsesFormat(fromFormat) && supportsUpdates
 
@@ -360,7 +360,19 @@ func applyThinking(body, sourceBody []byte, model string, fromFormat string, toF
 		return applySummaryConfigForProvider(body, providerFormat, baseModel, providerKey, modelInfo, summaryConfig), nil
 	}
 	if modelInfoResolved && config.Mode == ModeLevel && modelInfo != nil && modelInfo.Thinking != nil && shouldMapConfiguredHighIntent(fromFormat, providerFormat, modelInfo) {
+		requested := config.Level
 		config.Level = mapConfiguredHighIntent(config.Level, modelInfo)
+		if !strings.EqualFold(string(requested), string(config.Level)) {
+			// The cross-family "as high as this model goes" rule changed the
+			// level. Say so at the default log level; the caller asked for a
+			// specific effort and is getting a different one.
+			log.WithFields(log.Fields{
+				"provider":       providerFormat,
+				"model":          modelInfo.ID,
+				"original_value": string(requested),
+				"remapped_to":    string(config.Level),
+			}).Warn("thinking: level remapped (requested level not supported by model) |")
+		}
 	}
 
 	// 5. Validate and normalize configuration

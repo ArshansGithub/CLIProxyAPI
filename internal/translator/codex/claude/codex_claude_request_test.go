@@ -877,6 +877,40 @@ func TestConvertClaudeRequestToCodex_OutputConfigFormat(t *testing.T) {
 		}
 	})
 
+	t.Run("output_config effort without thinking block is honored", func(t *testing.T) {
+		// Claude Code can omit the thinking block and still send an explicit
+		// effort. The Codex request must carry that effort rather than the
+		// translator's medium default.
+		payload := []byte(`{
+			"model": "gpt-6.1-sol",
+			"output_config": {"effort": "max"},
+			"messages": [
+				{"role": "user", "content": "hello"}
+			]
+		}`)
+
+		translated := ConvertClaudeRequestToCodex("gpt-6.1-sol", payload, false)
+		root := gjson.ParseBytes(translated)
+		if got := root.Get("reasoning.effort").String(); got != "max" {
+			t.Errorf("expected reasoning.effort to be 'max', got %q", got)
+		}
+	})
+
+	t.Run("no thinking and no effort keeps the medium default", func(t *testing.T) {
+		payload := []byte(`{
+			"model": "gpt-6.1-sol",
+			"messages": [
+				{"role": "user", "content": "hello"}
+			]
+		}`)
+
+		translated := ConvertClaudeRequestToCodex("gpt-6.1-sol", payload, false)
+		root := gjson.ParseBytes(translated)
+		if got := root.Get("reasoning.effort").String(); got != "medium" {
+			t.Errorf("expected reasoning.effort to default to 'medium', got %q", got)
+		}
+	})
+
 	t.Run("json_schema with optional property downgrades strict", func(t *testing.T) {
 		payload := []byte(`{
 			"model": "gpt-5.4",
