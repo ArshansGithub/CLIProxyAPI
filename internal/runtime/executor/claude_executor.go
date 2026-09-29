@@ -14,6 +14,7 @@ import (
 	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/signaturedrops"
 	sigcompat "github.com/router-for-me/CLIProxyAPI/v8/internal/signature"
 	responsesclaude "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/claude/openai/responses"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
@@ -316,6 +317,9 @@ func logClaudeSignatureSanitizeReport(ctx context.Context, baseModel string, rep
 		})
 	}
 	for _, drop := range unknownGenerationDrops {
+		// The warning below is one line among a thousand an hour in main.log;
+		// the counter is what the cache watch page's banner reads.
+		signaturedrops.Default().Record(drop.reason, baseModel, int64(drop.count))
 		logger.WithFields(log.Fields{
 			"component":           "signature_sanitizer",
 			"executor":            "claude",
