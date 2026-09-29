@@ -299,7 +299,7 @@ func applyThinkingDocCore(doc *ojson.Doc, docValid bool, sourceBody []byte, mode
 	responseTarget := providerFormat == "codex" || providerFormat == "xai"
 	supportsUpdates := modelInfo != nil && modelInfo.SupportConfigurationUpdate
 	if responseTarget && !supportsUpdates {
-		if stripConfigurationUpdatesDoc(doc, docValid) {
+		if stripConfigurationUpdatesLoggedDoc(doc, docValid, providerFormat, baseModel, modelInfo) {
 			modified = true
 		}
 	}
@@ -432,7 +432,19 @@ func applyThinkingDocCore(doc *ojson.Doc, docValid bool, sourceBody []byte, mode
 		return modified, nil
 	}
 	if modelInfoResolved && config.Mode == ModeLevel && modelInfo != nil && modelInfo.Thinking != nil && shouldMapConfiguredHighIntent(fromFormat, providerFormat, modelInfo) {
+		requested := config.Level
 		config.Level = mapConfiguredHighIntent(config.Level, modelInfo)
+		if !strings.EqualFold(string(requested), string(config.Level)) {
+			// The cross-family "as high as this model goes" rule changed the
+			// level. Say so at the default log level; the caller asked for a
+			// specific effort and is getting a different one.
+			log.WithFields(log.Fields{
+				"provider":       providerFormat,
+				"model":          modelInfo.ID,
+				"original_value": string(requested),
+				"remapped_to":    string(config.Level),
+			}).Warn("thinking: level remapped (requested level not supported by model) |")
+		}
 	}
 
 	// 5. Validate and normalize configuration

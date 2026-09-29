@@ -229,6 +229,23 @@
     test moved onto MergeStreamUsageDetail, and the prewarm regression test
     moved onto upstream's normalizeResponsesWebsocketPrewarmFollowup.
 
+- subject: "fix(thinking): never rewrite a requested effort silently"
+  layer: fix
+  upstream_pr: null
+  drop: >-
+    upstream logs level clamps and high-intent remaps above Debug, warns when
+    it strips configuration_update items, honours a bare output_config.effort
+    in the Claude->Codex translator, and orders "ultra" above "max"
+  note: >-
+    Four places rewrote or dropped a caller's effort with nothing visible at
+    the default Info log level: clampLevel logged at Debug, the cross-family
+    xhigh/max remap logged nothing, stripConfigurationUpdates was silent, and
+    the Claude->Codex translator ignored output_config.effort whenever the
+    request had no thinking block and sent "medium". Each now warns with the
+    model, the requested effort and the applied one, or forwards the effort.
+    LevelUltra joins standardLevelOrder above max so a request for "ultra" on
+    a model without it clamps to max instead of failing validation.
+
 # ----------------------------------------------------------- locked build ---
 
 - prefixes:
