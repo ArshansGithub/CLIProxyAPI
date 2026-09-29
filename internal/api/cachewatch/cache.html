@@ -278,14 +278,15 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
 
   async function poll() {
     try {
-      const [stats, keepalive, versions, events, accounts] = await Promise.all([
+      const [stats, keepalive, versions, events, accounts, drops] = await Promise.all([
         api('/v0/management/cache-stats'),
         api('/v0/management/cache-keepalive').catch((e) => (e.status === 404 ? { enabled: false, sessions: [], counters: {} } : Promise.reject(e))),
         api('/v0/management/claude-client-versions').catch(() => null),
         api('/v0/management/cache-stats/events?after=' + state.latestSeq + '&limit=300').catch((e) => (e.status === 404 ? null : Promise.reject(e))),
         api('/v0/management/auth-files').catch(() => null),
+        api('/v0/management/signature-drops').catch(() => null),
       ]);
-      state.stats = stats; state.keepalive = keepalive; state.versions = versions;
+      state.stats = stats; state.keepalive = keepalive; state.versions = versions; state.drops = drops;
       if (accounts) state.accounts = accounts;
       if (events) {
         if (events.latest_seq < state.latestSeq) state.events = [];
@@ -376,7 +377,25 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
     if (alerting.length) out.push(`<div class="banner bad">${alerting.length} session${alerting.length > 1 ? 's are' : ' is'} losing cached tokens faster than the alert threshold: ${alerting.map((x) => '<code>' + esc(x.short_id) + '</code>').join(', ')}.</div>`);
     const kaMiss = state.keepalive && state.keepalive.counters && state.keepalive.counters.misses;
     if (kaMiss) out.push(`<div class="banner">${kaMiss} keepalive probe${kaMiss > 1 ? 's' : ''} found the entry already gone. See the probe list.</div>`);
+    out.push(...signatureDropBanners(state.drops));
     $('banners').innerHTML = out.join('');
+  }
+
+  // The proxy drops a thinking block whose CAIS signature carries a generation
+  // id it does not recognize, and the request still succeeds, so the only
+  // symptom is a warn line in main.log. Channel id 18 went unrecognized for
+  // ten days that way (2026-09-19 to 09-29): every Opus 5.5 and Fable 5.1
+  // request reached Anthropic with its thinking history stripped. The banner
+  // stays red while drops are recent and grey once they have stopped, so the
+  // fix is verified on the same page that raised the alarm.
+  function signatureDropBanners(d) {
+    if (!d || !d.requests) return [];
+    const reasons = (d.reasons || []).map((r) => `<code>${esc(r.reason)}</code> on ${(r.models || []).map((m) => '<code>' + esc(m) + '</code>').join(', ') || 'unknown models'} (${fmt(r.count)} request${r.count === 1 ? '' : 's'}, last ${ago(r.last_seen)})`).join('; ');
+    const hours = Math.round((d.window_seconds || 0) / 3600);
+    if (d.recent_requests) {
+      return [`<div class="banner bad"><b>Thinking history is being stripped.</b> ${fmt(d.recent_requests)} request${d.recent_requests === 1 ? '' : 's'} in the last ${hours}h (${fmt(d.requests)} since start, ${fmt(d.blocks)} blocks) lost signed thinking blocks to an unrecognized CAIS generation: ${reasons}. The model runs without its prior reasoning until the identifier is confirmed against a capture and added to <code>knownClaudeCAISChannelIDs</code> / <code>knownClaudeCAISEnvelopeVersions</code> in <code>internal/signature/claude_validation.go</code>, then <code>make install</code>. Clear the counter with <code>DELETE /v0/management/signature-drops</code> once fixed.</div>`];
+    }
+    return [`<div class="banner">Signed thinking blocks were dropped for an unrecognized CAIS generation earlier this run (${fmt(d.requests)} request${d.requests === 1 ? '' : 's'}, last ${ago(d.last_seen)}) and have stopped: ${reasons}. Clear with <code>DELETE /v0/management/signature-drops</code>.</div>`];
   }
 
   function isLive(s) { const t = Date.parse(s.last_seen); return !isNaN(t) && Date.now() - t < LIVE_WINDOW_MS; }

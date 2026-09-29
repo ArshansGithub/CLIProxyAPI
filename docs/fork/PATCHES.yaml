@@ -142,6 +142,23 @@
     with the reset-perceived-quota control (v8.0.3 rebase, 2026-09-28).
 
 - subjects:
+    - "signature: accept any CAIS generation at or above the observed floor"
+    - "signature-drops: count stripped thinking history and show it on the watch page"
+  layer: feat
+  upstream_pr: null
+  drop: >-
+    the floor stays for as long as the fork validates model-free CAIS at all;
+    the counter and banner go with the /cache.html watch page above
+  note: >-
+    2026-09-29. The enumerated allowlist ({2,4} x {16,17}) dropped every
+    channel-18 thinking block from 2026-09-19 to 2026-09-29 (93,667 requests
+    on claude-fable-5-1 and claude-opus-5-5), with a warn line in main.log as
+    the only symptom. Replaced by independent floors (envelope >= 2, channel
+    >= 16) so a generation bump passes; a process counter behind
+    GET/DELETE /v0/management/signature-drops feeds a red banner on
+    /cache.html while drops are recent.
+
+- subjects:
     - "fix(claude): treat the pinned Claude Code version as a floor, not a lock"
     - "fix(claude): correct the version-drift warning wording"
   layer: fix
