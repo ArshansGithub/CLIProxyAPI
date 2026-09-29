@@ -136,12 +136,14 @@
 //	spine-shaped, identifiers randomised         n=200,000    shipped=4,754  (the {2,4}x{16,17} product)
 //	spine-shaped, exactly one identifier bumped  n=200,000    shipped=0
 //
-// The allowlist earns the small measured exclusion over the bare structure in
-// the second row. The last row is its residual cost: a future identifier bump
-// drops signed history until the list is amended. The executor emits that event
-// at operator-visible warning severity with the rejected identifier. Gemini and
-// GPT are unreachable here by their 0x12 and 0x80 envelope markers; Kimi and
-// Grok have no protobuf tree.
+// Those controls were measured against the enumerated allowlist that shipped
+// until 2026-09-29. The floors that replaced it (see minClaudeCAISChannelID)
+// accept every identifier at or above the observed generations, so the third
+// row's exclusion is now only the sub-floor part of the space and the fourth
+// row's cost, a bump dropping signed history until the list is amended, is
+// gone: that cost was paid for ten days on channel id 18. The spine rows are
+// unchanged. Gemini and GPT are unreachable here by their 0x12 and 0x80
+// envelope markers; Kimi and Grok have no protobuf tree.
 //
 // # Which provider emits which envelope
 //
@@ -644,22 +646,32 @@ const (
 	claudeCAISModelTextPrefix = "claude-"
 )
 
-// Model-free CAIS envelopes use explicit known-generation allowlists in
-// addition to the structural spine. This is release bookkeeping, not
+// Model-free CAIS envelopes accept any generation identifier at or above a
+// floor, in addition to the structural spine. This is release bookkeeping, not
 // cryptographic verification or the source of cross-provider separation. The
-// two lists deliberately form a Cartesian product. This policy allows the two
-// separately versioned protobuf layers to roll independently; pair-locking would
-// instead drop signed history during a staggered rollout. It accepts combinations
-// not yet seen in a model-free capture, but only when both identifiers are
-// independently observed CAIS generations and the complete model-free spine is
-// present. When Anthropic
-// adds a generation, confirm its complete protobuf tree against captures, then
-// add its envelope version or channel id here. Channel id 11 is intentionally
-// absent because it has only been observed under the legacy 0x12 envelope, never
-// under CAIS.
-var (
-	knownClaudeCAISEnvelopeVersions = [...]uint64{2, 4}
-	knownClaudeCAISChannelIDs       = [...]uint64{16, 17}
+// two floors are independent so the two separately versioned protobuf layers
+// can roll on their own: a new envelope version with an old channel id, or the
+// reverse, passes, as does any pair above both floors that no capture has yet
+// shown.
+//
+// The floors replaced an enumerated allowlist ({2,4} x {16,17}) on
+// 2026-09-29. Under the list, channel id 18 (first seen on claude-fable-5-1 on
+// 2026-09-19 and on claude-opus-5-5 from its first request on 2026-09-22;
+// envelope 4, container field 5 carrier, block kinds "thinking" and
+// "narration") went unrecognized for ten days, during which every request on
+// those models reached Anthropic with its thinking history stripped, while the
+// responses stayed 200 and the only trace was a warn line in main.log. An
+// identifier bump is Anthropic rolling a generation forward, which is the
+// ordinary event; a fork that has to be rebuilt each time it happens fails
+// closed on the common case. What the floors still exclude is what the
+// captures say never occurs under CAIS: channel id 11 and below (legacy 0x12
+// envelope only) and envelope versions before 2. A value below a floor still
+// reports as an unknown generation, so the drop counter in
+// internal/runtime/signaturedrops and the cache watch page's banner catch a
+// regression the same way they would have caught the bump.
+const (
+	minClaudeCAISEnvelopeVersion uint64 = 2
+	minClaudeCAISChannelID       uint64 = 16
 )
 
 type claudeCAISUnknownGenerationError struct {
@@ -751,15 +763,6 @@ func ClassifyUnknownCAISGeneration(reason string) (normalized string, ok bool) {
 // non-empty identifier, a single space, and the decimal value running to the
 // end of the string (see claudeCAISUnknownGenerationError.Error()'s "%s %d").
 var claudeCAISUnknownGenerationTrailingShape = regexp.MustCompile(`^` + regexp.QuoteMeta(claudeCAISUnknownGenerationPrefix) + `.+ \d+$`)
-
-func isKnownClaudeCAISIdentifier(known []uint64, value uint64) bool {
-	for _, candidate := range known {
-		if candidate == value {
-			return true
-		}
-	}
-	return false
-}
 
 // ClaudeCAISSignatureInfo describes the locally inspected structure of a Claude
 // CAIS thinking signature.
@@ -971,9 +974,9 @@ func InspectClaudeCAISSignature(rawSignature string) (*ClaudeCAISSignatureInfo, 
 		return nil, fmt.Errorf("invalid Claude model-free CAIS signature: container field 5 carrier must be bytes")
 	case len(containerCarrier) == 0:
 		return nil, fmt.Errorf("invalid Claude model-free CAIS signature: container field 5 carrier must not be empty")
-	case !isKnownClaudeCAISIdentifier(knownClaudeCAISEnvelopeVersions[:], info.EnvelopeVersion):
+	case info.EnvelopeVersion < minClaudeCAISEnvelopeVersion:
 		return nil, &claudeCAISUnknownGenerationError{identifier: "envelope version", value: info.EnvelopeVersion}
-	case !isKnownClaudeCAISIdentifier(knownClaudeCAISChannelIDs[:], info.ChannelID):
+	case info.ChannelID < minClaudeCAISChannelID:
 		return nil, &claudeCAISUnknownGenerationError{identifier: "channel_id", value: info.ChannelID}
 	case !claudeCAQSBlockKindAccepted(info):
 		return nil, claudeCAQSBlockKindError(info)

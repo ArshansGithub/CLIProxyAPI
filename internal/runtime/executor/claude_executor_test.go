@@ -3481,10 +3481,10 @@ func TestClaudeExecutor_ExecuteWarnsForUnknownCAISGenerationAtDefaultInfo(t *tes
 		}
 	}
 
-	const unknownEnvelopeReason = "invalid Claude model-free CAIS signature: unknown envelope version 5"
-	const unknownChannelReason = "invalid Claude model-free CAIS signature: unknown channel_id 18"
+	const unknownEnvelopeReason = "invalid Claude model-free CAIS signature: unknown envelope version 1"
+	const unknownChannelReason = "invalid Claude model-free CAIS signature: unknown channel_id 15"
 	t.Run("sole unknown generation is visible at default info", func(t *testing.T) {
-		signature := modelFreeClaudeCAISSignatureForExecutorTest(5, 17)
+		signature := modelFreeClaudeCAISSignatureForExecutorTest(1, 17)
 		payload := []byte(`{"model":"claude-fable-5-1","max_tokens":16,"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"signed history","signature":"` + signature + `"},{"type":"text","text":"answer"}]},{"role":"user","content":[{"type":"text","text":"next"}]}]}`)
 		entries, body := run(t, payload)
 		if bytes.Contains(body, []byte(signature)) {
@@ -3495,8 +3495,8 @@ func TestClaudeExecutor_ExecuteWarnsForUnknownCAISGenerationAtDefaultInfo(t *tes
 
 	t.Run("later unknown generations are aggregated at default info", func(t *testing.T) {
 		recognized := modelFreeClaudeCAISSignatureForExecutorTest(4, 17)
-		unknownEnvelope := modelFreeClaudeCAISSignatureForExecutorTest(5, 17)
-		unknownChannel := modelFreeClaudeCAISSignatureForExecutorTest(4, 18)
+		unknownEnvelope := modelFreeClaudeCAISSignatureForExecutorTest(1, 17)
+		unknownChannel := modelFreeClaudeCAISSignatureForExecutorTest(4, 15)
 		payload := []byte(`{"model":"claude-fable-5-1","max_tokens":16,"messages":[` +
 			`{"role":"assistant","content":[{"type":"thinking","thinking":"recognized","signature":"` + recognized + `"},{"type":"text","text":"answer 0"}]},` +
 			`{"role":"user","content":[{"type":"text","text":"next 0"}]},` +
@@ -3544,7 +3544,7 @@ func TestClaudeExecutor_ExecuteWarnsForUnknownCAISGenerationAtDefaultInfo(t *tes
 	const embeddedMarkerModelText = "claude-x invalid Claude model-free CAIS signature: unknown envelope version 9"
 	t.Run("preserved decision echoing marker text is not misclassified as a drop", func(t *testing.T) {
 		preservedSignature := modelTaggedClaudeCAISSignatureForExecutorTest(embeddedMarkerModelText)
-		droppedSignature := modelFreeClaudeCAISSignatureForExecutorTest(5, 17)
+		droppedSignature := modelFreeClaudeCAISSignatureForExecutorTest(1, 17)
 		payload := []byte(`{"model":"claude-fable-5-1","max_tokens":16,"messages":[` +
 			`{"role":"assistant","content":[{"type":"thinking","thinking":"preserved with embedded marker","signature":"` + preservedSignature + `"},{"type":"text","text":"answer 0"}]},` +
 			`{"role":"user","content":[{"type":"text","text":"next 0"}]},` +
@@ -3614,8 +3614,8 @@ func TestLogClaudeSignatureSanitizeReport_FiltersNonDropDecisionsBeforeClassifyi
 		logger.SetLevel(previousLevel)
 	})
 
-	const realDropReason = "invalid Claude model-free CAIS signature: unknown envelope version 5"
-	const notADropReason = "invalid Claude model-free CAIS signature: unknown channel_id 18"
+	const realDropReason = "invalid Claude model-free CAIS signature: unknown envelope version 1"
+	const notADropReason = "invalid Claude model-free CAIS signature: unknown channel_id 15"
 
 	report := sigcompat.SignatureSanitizeReport{
 		TargetProvider: sigcompat.SignatureProviderClaude,
