@@ -93,6 +93,13 @@ type ClaudeCodeCacheKeepaliveConfig struct {
 	// one short window. Default 30, about two hours of idle.
 	MaxProbes5m int `yaml:"max-probes-5m" json:"max-probes-5m"`
 
+	// IdleGraceProbes is how many consecutive probes a session with no live
+	// agent still receives after its last real request before the liveness gate
+	// retires it. Default 0: an idle session is never probed. A real request
+	// restores the grace. Three probes on the 5m pool hold the entry for about
+	// eighteen minutes at roughly six percent of the write they avoid.
+	IdleGraceProbes int `yaml:"idle-grace-probes" json:"idle-grace-probes"`
+
 	// MaxTokens is the max_tokens the probe body carries. Default 1.
 	MaxTokens int `yaml:"max-tokens" json:"max-tokens"`
 
@@ -130,6 +137,7 @@ func (c *ClaudeCodeCacheKeepaliveConfig) UnmarshalYAML(value *yaml.Node) error {
 		AgentIdleWindow      time.Duration `yaml:"agent-idle-window"`
 		MaxProbes            int           `yaml:"max-probes"`
 		MaxProbes5m          int           `yaml:"max-probes-5m"`
+		IdleGraceProbes      int           `yaml:"idle-grace-probes"`
 		MaxTokens            int           `yaml:"max-tokens"`
 		TaskStateDirs        []string      `yaml:"task-state-dirs"`
 		TaskOutputDirs       []string      `yaml:"task-output-dirs"`
@@ -151,6 +159,7 @@ func (c *ClaudeCodeCacheKeepaliveConfig) UnmarshalYAML(value *yaml.Node) error {
 		AgentIdleWindow:             raw.AgentIdleWindow,
 		MaxProbes:                   raw.MaxProbes,
 		MaxProbes5m:                 raw.MaxProbes5m,
+		IdleGraceProbes:             raw.IdleGraceProbes,
 		MaxTokens:                   raw.MaxTokens,
 		TaskStateDirs:               raw.TaskStateDirs,
 		TaskOutputDirs:              raw.TaskOutputDirs,
@@ -255,6 +264,9 @@ func (c ClaudeCodeCacheKeepaliveConfig) Validate() error {
 	}
 	if c.MaxProbes <= 0 {
 		return fmt.Errorf("claude-code.cache-keepalive.max-probes must be positive")
+	}
+	if c.IdleGraceProbes < 0 {
+		return fmt.Errorf("claude-code.cache-keepalive.idle-grace-probes must not be negative, got %d", c.IdleGraceProbes)
 	}
 	if c.MaxTokens <= 0 {
 		return fmt.Errorf("claude-code.cache-keepalive.max-tokens must be positive")
