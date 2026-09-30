@@ -81,6 +81,11 @@ type Config struct {
 	MaxProbes int
 	// MaxProbes5m is the same cap for the 5m pool. Zero falls back to MaxProbes.
 	MaxProbes5m int
+	// IdleGraceProbes is how many consecutive probes a session still receives
+	// when the liveness check reports no running agent. Zero keeps the strict
+	// rule: an idle session is retired at the first fire. The budget counts
+	// probes since the last real request, so every human pause starts fresh.
+	IdleGraceProbes int
 	// MaxTokens is the max_tokens value the probe body carries.
 	MaxTokens int
 }
@@ -294,6 +299,7 @@ type Snapshot struct {
 	AgentIdleWindow      string            `json:"agent_idle_window"`
 	MaxProbes            int               `json:"max_probes"`
 	MaxProbes5m          int               `json:"max_probes_5m"`
+	IdleGraceProbes      int               `json:"idle_grace_probes"`
 	MaxTokens            int               `json:"max_tokens"`
 	Sessions             []SessionSnapshot `json:"sessions"`
 	Counters             Counters          `json:"counters"`
@@ -660,17 +666,27 @@ func (s *Scheduler) fire(sessionID string, generation uint64) {
 	baselineRead := state.baselineRead
 	body := state.body
 	headers := state.headers
+	probesSoFar := state.probes
 	s.mu.Unlock()
 
+	// livenessSource records why the liveness gate let the probe through, so the
+	// probe line can tell a grace read from one backed by a running agent.
+	livenessSource := "agents"
 	if cfg.OnlyWhenAgentsActive {
 		idleWindow := cfg.AgentIdleWindow
 		if idleWindow <= 0 {
 			idleWindow = defaultAgentIdleWindow
 		}
 		if !s.recentTraffic(sessionID, state.lastRequestAt, idleWindow) && (liveness == nil || !liveness.Live(sessionID, idleWindow)) {
-			s.retire(sessionID, generation, "no-live-agents")
-			log.Infof("cache-keepalive: skipped | session=%s auth=%s model=%s ttl_tier=%s reason=no-live-agents", truncateSession(sessionID), authID, model, tier)
-			return
+			if probesSoFar >= cfg.IdleGraceProbes {
+				s.retire(sessionID, generation, "no-live-agents")
+				log.Infof("cache-keepalive: skipped | session=%s auth=%s model=%s ttl_tier=%s reason=no-live-agents consecutive_probes=%d idle_grace_probes=%d",
+					truncateSession(sessionID), authID, model, tier, probesSoFar, cfg.IdleGraceProbes)
+				return
+			}
+			// No agent is running, but the operator allows a few reads on an
+			// idle session: most human pauses end well inside the grace.
+			livenessSource = "idle-grace"
 		}
 	}
 	if binding != nil && bindingSessionID != "" {
@@ -738,7 +754,7 @@ func (s *Scheduler) fire(sessionID string, generation uint64) {
 	current := s.sessions[sessionID]
 	if s.stopped || !s.cfg.Enabled || current == nil || current.generation != generation {
 		s.mu.Unlock()
-		s.logProbe(sessionID, authID, model, tier, probe5m, outcome, elapsed, 0, 0, false, time.Time{})
+		s.logProbe(sessionID, authID, model, tier, probe5m, livenessSource, outcome, elapsed, 0, 0, false, time.Time{})
 		return
 	}
 	current.probes++
@@ -757,7 +773,7 @@ func (s *Scheduler) fire(sessionID string, generation uint64) {
 	}
 	s.mu.Unlock()
 
-	s.logProbe(sessionID, authID, model, tier, probe5m, outcome, elapsed, total, consecutive, rescheduled, nextProbeAt)
+	s.logProbe(sessionID, authID, model, tier, probe5m, livenessSource, outcome, elapsed, total, consecutive, rescheduled, nextProbeAt)
 }
 
 // probeMissed reports whether a probe failed to refresh the entry it was sent for.
@@ -779,14 +795,14 @@ func probeMissed(read, baseline int64) bool {
 //
 // A probe that found nothing cached is the malfunction signal: the entry it was
 // meant to refresh had already expired, so it is logged at warning level.
-func (s *Scheduler) logProbe(sessionID, authID, model, tier, probe5m string, outcome ProbeOutcome, elapsed time.Duration, total, consecutive int, rescheduled bool, nextProbeAt time.Time) {
+func (s *Scheduler) logProbe(sessionID, authID, model, tier, probe5m, livenessSource string, outcome ProbeOutcome, elapsed time.Duration, total, consecutive int, rescheduled bool, nextProbeAt time.Time) {
 	next := "none"
 	if !nextProbeAt.IsZero() {
 		next = nextProbeAt.Format(time.RFC3339)
 	}
-	fields := "session=%s auth=%s model=%s ttl_tier=%s probe_5m=%s status=%s cache_read_input_tokens=%d cache_creation_input_tokens=%d baseline_read_input_tokens=%d duration=%s probes_sent=%d consecutive_probes=%d rescheduled=%t next_probe_at=%s"
+	fields := "session=%s auth=%s model=%s ttl_tier=%s probe_5m=%s liveness=%s status=%s cache_read_input_tokens=%d cache_creation_input_tokens=%d baseline_read_input_tokens=%d duration=%s probes_sent=%d consecutive_probes=%d rescheduled=%t next_probe_at=%s"
 	args := []any{
-		truncateSession(sessionID), authID, model, tier, probe5m, outcome.Status,
+		truncateSession(sessionID), authID, model, tier, probe5m, livenessSource, outcome.Status,
 		outcome.CacheReadInputTokens, outcome.CacheCreationInputTokens, outcome.BaselineReadInputTokens,
 		elapsed.Round(time.Millisecond), total, consecutive, rescheduled, next,
 	}
@@ -898,6 +914,7 @@ func (s *Scheduler) Snapshot() Snapshot {
 		AgentIdleWindow:      s.cfg.AgentIdleWindow.String(),
 		MaxProbes:            s.cfg.MaxProbes,
 		MaxProbes5m:          s.cfg.MaxProbes5m,
+		IdleGraceProbes:      s.cfg.IdleGraceProbes,
 		MaxTokens:            s.cfg.MaxTokens,
 		Sessions:             make([]SessionSnapshot, 0, len(s.sessions)),
 		Counters: Counters{

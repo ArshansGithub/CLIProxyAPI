@@ -1112,3 +1112,86 @@ func TestSnapshotReportsTheTierAndTheProbe5mSettings(t *testing.T) {
 		t.Fatalf("1h session = (tier %q, decision %q), want (%q, %q)", got.TTLTier, got.Probe5mDecision, TTLTier1h, Probe5mDecisionNotApplicable)
 	}
 }
+
+// A session idling at the prompt is worth a few cheap reads before it is let
+// go: most human pauses end inside a quarter of an hour, and three 5m probes
+// cost about six percent of the cold write they avoid.
+func TestIdleGraceProbesAnIdleSessionThenRetires(t *testing.T) {
+	clock := &fakeClock{}
+	prober := &recordingProber{result: ProbeResult{CacheReadInputTokens: 1000}}
+	scheduler := testScheduler(t, clock, prober, staticLiveness{live: false}, staticBinding{authID: "auth-a", state: BindingBound},
+		func(cfg *Config) { cfg.IdleGraceProbes = 3 })
+
+	observeFiveMinutes(scheduler, "sess-1", "claude-fable-5-1")
+	for i := 0; i < 3; i++ {
+		clock.fireLatest(t)
+	}
+	if calls := prober.calls(); len(calls) != 3 {
+		t.Fatalf("probed %d times inside the idle grace, want 3", len(calls))
+	}
+	if clock.count() != 4 {
+		t.Fatalf("timers = %d after three grace probes, want 4 (initial plus three reschedules)", clock.count())
+	}
+
+	clock.fireLatest(t)
+	if calls := prober.calls(); len(calls) != 3 {
+		t.Fatalf("probed %d times after the grace was spent, want 3", len(calls))
+	}
+	if clock.count() != 4 {
+		t.Fatalf("rescheduled after the grace was spent; timers = %d, want 4", clock.count())
+	}
+	snapshot := scheduler.Snapshot()
+	if len(snapshot.Sessions) != 1 || snapshot.Sessions[0].Active {
+		t.Fatalf("session still active after the grace was spent: %+v", snapshot.Sessions)
+	}
+	if snapshot.Sessions[0].RetiredReason != "no-live-agents" {
+		t.Fatalf("retired_reason = %q, want no-live-agents", snapshot.Sessions[0].RetiredReason)
+	}
+	if snapshot.Counters.SkippedByReason["no-live-agents"] != 1 {
+		t.Fatalf("skipped_by_reason = %v, want one no-live-agents", snapshot.Counters.SkippedByReason)
+	}
+}
+
+func TestRealRequestRestoresTheIdleGrace(t *testing.T) {
+	clock := &fakeClock{}
+	prober := &recordingProber{result: ProbeResult{CacheReadInputTokens: 1000}}
+	scheduler := testScheduler(t, clock, prober, staticLiveness{live: false}, staticBinding{authID: "auth-a", state: BindingBound},
+		func(cfg *Config) { cfg.IdleGraceProbes = 2 })
+
+	observeFiveMinutes(scheduler, "sess-1", "claude-fable-5-1")
+	clock.fireLatest(t)
+	clock.fireLatest(t)
+	clock.fireLatest(t)
+	if calls := prober.calls(); len(calls) != 2 {
+		t.Fatalf("probed %d times, want 2 before the grace is spent", len(calls))
+	}
+
+	observeFiveMinutes(scheduler, "sess-1", "claude-fable-5-1")
+	clock.fireLatest(t)
+	if calls := prober.calls(); len(calls) != 3 {
+		t.Fatalf("probed %d times after a real request, want 3: the grace must reset", len(calls))
+	}
+}
+
+func TestIdleGraceDoesNotCapALiveSession(t *testing.T) {
+	clock := &fakeClock{}
+	prober := &recordingProber{result: ProbeResult{CacheReadInputTokens: 1000}}
+	scheduler := testScheduler(t, clock, prober, staticLiveness{live: true}, staticBinding{authID: "auth-a", state: BindingBound},
+		func(cfg *Config) { cfg.IdleGraceProbes = 1 })
+
+	observeFiveMinutes(scheduler, "sess-1", "claude-fable-5-1")
+	for i := 0; i < 4; i++ {
+		clock.fireLatest(t)
+	}
+	if calls := prober.calls(); len(calls) != 4 {
+		t.Fatalf("probed %d times with agents live, want 4: the grace only applies to idle sessions", len(calls))
+	}
+}
+
+func TestSnapshotReportsTheIdleGrace(t *testing.T) {
+	clock := &fakeClock{}
+	scheduler := testScheduler(t, clock, &recordingProber{}, staticLiveness{live: false}, staticBinding{}, func(cfg *Config) { cfg.IdleGraceProbes = 3 })
+	if got := scheduler.Snapshot().IdleGraceProbes; got != 3 {
+		t.Fatalf("idle_grace_probes = %d, want 3", got)
+	}
+}

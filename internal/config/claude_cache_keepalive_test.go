@@ -41,6 +41,9 @@ func TestParseConfigBytesClaudeCodeCacheKeepaliveDefaults(t *testing.T) {
 	if keepalive.MaxProbes5m != 30 {
 		t.Fatalf("MaxProbes5m = %d, want 30", keepalive.MaxProbes5m)
 	}
+	if keepalive.IdleGraceProbes != 0 {
+		t.Fatalf("IdleGraceProbes = %d, want 0 (off by default)", keepalive.IdleGraceProbes)
+	}
 }
 
 func TestParseConfigBytesClaudeCodeCacheKeepaliveOverrides(t *testing.T) {
@@ -55,6 +58,7 @@ func TestParseConfigBytesClaudeCodeCacheKeepaliveOverrides(t *testing.T) {
 		"    before-expiry-5m: 20s\n" +
 		"    probe-5m: always\n" +
 		"    max-probes-5m: 12\n" +
+		"    idle-grace-probes: 3\n" +
 		"    probe-5m-models:\n" +
 		"      - claude-experimental-9\n" +
 		"    task-state-dirs:\n" +
@@ -98,6 +102,9 @@ func TestParseConfigBytesClaudeCodeCacheKeepaliveOverrides(t *testing.T) {
 	}
 	if keepalive.MaxProbes5m != 12 {
 		t.Fatalf("MaxProbes5m = %d, want 12", keepalive.MaxProbes5m)
+	}
+	if keepalive.IdleGraceProbes != 3 {
+		t.Fatalf("IdleGraceProbes = %d, want 3", keepalive.IdleGraceProbes)
 	}
 	if len(keepalive.Probe5mModels) != 1 || keepalive.Probe5mModels[0] != "claude-experimental-9" {
 		t.Fatalf("Probe5mModels = %v, want [claude-experimental-9]", keepalive.Probe5mModels)
@@ -143,6 +150,11 @@ func TestClaudeCodeCacheKeepaliveValidate(t *testing.T) {
 		{
 			name:    "before-expiry-5m at or above the 5m ttl rejected",
 			yaml:    "claude-code:\n  cache-keepalive:\n    enabled: true\n    before-expiry-5m: 5m\n",
+			wantErr: true,
+		},
+		{
+			name:    "negative idle-grace-probes rejected",
+			yaml:    "claude-code:\n  cache-keepalive:\n    enabled: true\n    idle-grace-probes: -1\n",
 			wantErr: true,
 		},
 		{

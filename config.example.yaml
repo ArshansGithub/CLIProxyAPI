@@ -1063,6 +1063,14 @@ oauth:
           # actually bounds the spend on a live session; this bounds an abandoned one.
           max-probes-5m: 30
 
+          # How many consecutive probes a session with no running agent still gets
+          # after its last real request before the liveness gate retires it. Default 0:
+          # a session idling on human input is never probed. A real request restores
+          # the grace, so every pause starts fresh. Each probe reads the prefix once at
+          # the cache-read rate; on the 5m pool three probes hold the entry for about
+          # eighteen minutes at roughly six percent of the cold write they avoid.
+          idle-grace-probes: 0
+
           # max_tokens the probe body carries. Default 1.
           max-tokens: 1
 

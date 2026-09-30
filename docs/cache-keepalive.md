@@ -52,6 +52,17 @@ session idling on human input is never probed: that wait is unbounded, and the
 guarantee that another turn is coming is what makes the probe pay for itself.
 That gate, not the probe count, is what bounds the spend on either tier.
 
+`idle-grace-probes` softens that rule by a fixed amount. With it set, a session
+the liveness check reports idle still receives that many consecutive probes
+after its last real request, then retires as `no-live-agents` as before. A real
+request restores the grace. The case it serves is the operator who steps away
+from the prompt for ten or twenty minutes: on the 5m pool three grace probes
+hold the entry for about eighteen minutes and cost about six percent of the
+cache write the return turn would otherwise pay, so the grace pays for itself
+whenever more than roughly one pause in sixteen ends inside it. The probe line
+reports `liveness=agents` or `liveness=idle-grace` so the two kinds of read can
+be told apart in the log; the skip line reports how much grace was used.
+
 ## How it works
 
 1. **Observe.** Every request that a confirmed Claude Code client sent with a
@@ -71,7 +82,8 @@ That gate, not the probe count, is what bounds the spend on either tier.
 2. **Fire.** At the timer, in order:
    - a newer request for that session supersedes the probe, which is dropped;
    - the liveness check must report a running agent, unless
-     `only-when-agents-active` is false;
+     `only-when-agents-active` is false or the session still has
+     `idle-grace-probes` left since its last real request;
    - the session must still be bound to the same credential. If the binding is
      gone, because of a cooldown or a rotation, the probe is skipped: a probe on a
      different account warms nothing useful. With session-sticky routing turned
@@ -175,6 +187,7 @@ claude-code:
     agent-idle-window: 10m         # how long an agent may be silent and still count as running
     max-probes: 6                  # 1h pool
     max-probes-5m: 30              # 5m pool, ~2h of idle
+    idle-grace-probes: 0            # probes an idle session still gets after its last request
     max-tokens: 1
     # task-state-dirs:
     #   - "~/.claude/tasks"
@@ -195,7 +208,7 @@ Every line is prefixed `cache-keepalive:`, so `grep cache-keepalive main.log`
 tells the whole story with no other source.
 
 ```
-cache-keepalive: enabled | before-expiry=5m0s before-expiry-5m=45s probe-5m=auto only-when-agents-active=true liveness=claude-code-tasks agent-idle-window=10m0s max-probes=6 max-probes-5m=30 max-tokens=1
+cache-keepalive: enabled | before-expiry=5m0s before-expiry-5m=45s probe-5m=auto only-when-agents-active=true liveness=claude-code-tasks agent-idle-window=10m0s max-probes=6 max-probes-5m=30 idle-grace-probes=0 max-tokens=1
 cache-keepalive: scheduled | session=4463ede6... auth=<id> model=<model> ttl=1h0m0s ttl_tier=1h probe_5m=n/a fires_in=55m0s next_probe_at=2026-09-02T20:51:57-07:00
 cache-keepalive: scheduled | session=8f21ac03... auth=<id> model=claude-fable-5-1 ttl=5m0s ttl_tier=5m probe_5m=model-auto fires_in=4m15s next_probe_at=2026-09-02T20:36:12-07:00
 cache-keepalive: probe | session=4463ede6... auth=<id> model=<model> ttl_tier=1h probe_5m=n/a status=hit cache_read_input_tokens=161937 cache_creation_input_tokens=0 duration=612ms probes_sent=1 consecutive_probes=1 rescheduled=true next_probe_at=2026-09-02T21:46:57-07:00
