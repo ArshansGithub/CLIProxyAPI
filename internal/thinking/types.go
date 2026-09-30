@@ -95,6 +95,11 @@ type SuffixResult struct {
 	// RawSuffix is the content inside the parentheses, without the parentheses.
 	// Empty string if HasSuffix is false.
 	RawSuffix string
+
+	// Hyphenated is true when the suffix came from an effort-suffixed slug
+	// ("claude-opus-5-5-medium") rather than the parenthesised form, so a
+	// layer that re-attaches the suffix can keep the caller's spelling.
+	Hyphenated bool
 }
 
 // ProviderApplier defines the interface for provider-specific thinking configuration application.

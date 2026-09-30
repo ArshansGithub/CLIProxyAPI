@@ -128,6 +128,13 @@ func preserveResolvedModelSuffix(resolved string, requestResult thinking.SuffixR
 		return resolved
 	}
 	if requestResult.HasSuffix && requestResult.RawSuffix != "" {
+		if requestResult.Hyphenated {
+			// An effort-suffixed slug keeps its spelling so the log names the
+			// model the caller asked for ("gpt-6.1-sol-high", not "gpt-6.1-sol(high)").
+			if candidate := resolved + "-" + requestResult.RawSuffix; thinking.ParseSuffix(candidate).HasSuffix {
+				return candidate
+			}
+		}
 		return resolved + "(" + requestResult.RawSuffix + ")"
 	}
 	return resolved
