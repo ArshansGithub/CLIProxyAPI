@@ -268,6 +268,24 @@
     allowlist), and the OAuth alias layer re-attaches a hyphen suffix in the
     caller's spelling so the log names the slug.
 
+- subject: "feat(effort-pin): refuse bare ids for effort-pinned models, with a watch-page switch"
+  layer: feat
+  upstream_pr: null
+  drop: >-
+    upstream refuses, or can be configured to refuse, a model id that names no
+    effort for a configured set of models, with a runtime override
+  note: >-
+    2026-09-29, his 2668. With the effort in the slug, a bare id
+    (claude-opus-5-5, scoped/claude-opus-5-5, gpt-6.1-sol) is the one spelling
+    under which an effort can still drift with a client's session dial. The
+    effort-pin config block names the models; the auth manager's Execute and
+    ExecuteStream refuse a bare pinned id with a 400 naming the slugs and a
+    Warn line, before any credential is selected. GET/PUT
+    /v0/management/effort-pin reads and flips a per-process allow-bare switch
+    (the config value returns on reload); /cache.html shows the state, the
+    refusal and let-through counters, the switch, and a red banner while bare
+    ids are allowed. Fable is not in the set: the conductor's effort is his dial.
+
 # ----------------------------------------------------------- locked build ---
 
 - prefixes:
