@@ -72,6 +72,7 @@ Three mechanisms, each independently tested, all switched on by the `locked` bui
 | Home mode, Postgres / object / git token stores | connect through their own client libraries, outside any gate | refused at startup; file store only |
 | Updates | pull a tag and hope | audit report with a checklist gates the rebase; every carried patch registered |
 | Effort-suffixed model slugs | `model(level)` only | also `model-level`: `claude-opus-5-5-medium`, `scoped/claude-opus-5-5-medium`, `gpt-6.1-sol-high`. The slug pins the effort on the upstream call; an effort the caller sent is replaced and logged at Warn (`caller effort rewritten by model suffix`). Real catalog ids ending in a level word are left alone; bare ids behave as before |
+| Effort pin | — | `effort-pin.models` names the models that must be asked for by an effort slug; a bare id gets a 400 naming the slugs and a Warn line. `/cache.html` shows the counters and a switch that allows bare ids for the running process (red banner while on); `GET`/`PUT /v0/management/effort-pin` |
 | Claude Code cache | — | keepalive probing, per-session cache stats, `/cache.html` watch page (sessions, loss events, probes, and an accounts table with a reset-perceived-quota control), TUI Cache tab |
 
 Everything else (executors, auth flows, management API, TUI) is upstream code at the pinned tag.

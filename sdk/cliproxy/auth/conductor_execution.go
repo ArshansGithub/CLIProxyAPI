@@ -17,6 +17,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/effortpin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	cliproxysession "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/session"
@@ -125,6 +126,10 @@ func (m *Manager) Execute(ctx context.Context, providers []string, req cliproxye
 	req, opts = cliproxysession.Enrich(req, opts)
 	ctx = WithCodexClientRequest(ctx, IsCodexClientRequest(ctx, opts.Headers))
 	ctx = coreusage.CaptureIdentity(ctx)
+	if refused, msg := effortpin.Default().Refuse(req.Model); refused {
+		log.WithFields(log.Fields{"model": req.Model, "reason": "effort pin: bare id for a pinned model"}).Warn("effort-pin: request refused |")
+		return cliproxyexecutor.Response{}, &Error{Code: "effort_pin", Message: msg, HTTPStatus: http.StatusBadRequest}
+	}
 	normalized := m.normalizeProviders(providers)
 	if len(normalized) == 0 {
 		return cliproxyexecutor.Response{}, &Error{Code: "provider_not_found", Message: "no provider supplied"}
@@ -242,6 +247,10 @@ func (m *Manager) ExecuteStream(ctx context.Context, providers []string, req cli
 	req, opts = cliproxysession.Enrich(req, opts)
 	ctx = WithCodexClientRequest(ctx, IsCodexClientRequest(ctx, opts.Headers))
 	ctx = coreusage.CaptureIdentity(ctx)
+	if refused, msg := effortpin.Default().Refuse(req.Model); refused {
+		log.WithFields(log.Fields{"model": req.Model, "reason": "effort pin: bare id for a pinned model"}).Warn("effort-pin: request refused |")
+		return nil, &Error{Code: "effort_pin", Message: msg, HTTPStatus: http.StatusBadRequest}
+	}
 	if m.HomeEnabled() {
 		if unlockSession := m.lockHomeWebsocketSession(ctx, opts); unlockSession != nil {
 			defer unlockSession()

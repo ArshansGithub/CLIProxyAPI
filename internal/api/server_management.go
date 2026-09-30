@@ -119,6 +119,11 @@ func (s *Server) registerManagementRoutes() {
 		// cache watch page shows a banner while this is non-zero.
 		mgmt.GET("/signature-drops", s.mgmt.GetSignatureDrops)
 		mgmt.DELETE("/signature-drops", s.mgmt.DeleteSignatureDrops)
+		// Bare ids for effort-pinned models are refused; the watch page's
+		// switch lifts that for the running process.
+		mgmt.GET("/effort-pin", s.mgmt.GetEffortPin)
+		mgmt.PUT("/effort-pin", s.mgmt.PutEffortPin)
+		mgmt.PATCH("/effort-pin", s.mgmt.PutEffortPin)
 
 		mgmt.GET("/logs", s.mgmt.GetLogs)
 		mgmt.DELETE("/logs", s.mgmt.DeleteLogs)
