@@ -246,6 +246,28 @@
     LevelUltra joins standardLevelOrder above max so a request for "ultra" on
     a model without it clamps to max instead of failing validation.
 
+- subject: "feat(thinking): effort-suffixed model slugs pin the upstream effort"
+  layer: feat
+  upstream_pr: null
+  drop: >-
+    upstream accepts a hyphenated effort suffix on any model id with suffix
+    priority over the body, and logs the rewrite above Debug
+  note: >-
+    2026-09-29. Claude Code 2.1.284 with agent teams gives a subagent the
+    higher of the session's effort and its definition's (anthropics/claude-code
+    #80569), so a definition's effort pin does not hold. The pin moves into the
+    model id: "claude-opus-5-5-medium" is "claude-opus-5-5(medium)" spelled the
+    way an agent file can carry it (the harness strips "[1m]", not parentheses).
+    ParseSuffix, the one split point every layer already calls, reads a trailing
+    -minimal|-low|-medium|-high|-xhigh|-max when the whole id is not a
+    registered model and the remainder is, so real ids such as
+    gemini-3.1-pro-low and gpt-oss-120b-medium are untouched and prefixed
+    clones (scoped/claude-opus-5-5-medium) keep their account pin. The two
+    suffix-priority sites in apply.go warn when the body carried a different
+    effort (original_value, rewritten_to; the field joins the formatter's
+    allowlist), and the OAuth alias layer re-attaches a hyphen suffix in the
+    caller's spelling so the log names the slug.
+
 # ----------------------------------------------------------- locked build ---
 
 - prefixes:

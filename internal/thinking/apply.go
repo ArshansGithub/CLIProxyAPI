@@ -2,6 +2,7 @@
 package thinking
 
 import (
+	"strconv"
 	"strings"
 	"sync"
 
@@ -319,6 +320,14 @@ func applyThinking(body, sourceBody []byte, model string, fromFormat string, toF
 			"budget":   config.Budget,
 			"level":    config.Level,
 		}).Debug("thinking: config from model suffix |")
+		callerConfig := sourceConfig
+		if !hasThinkingConfig(callerConfig) && len(sourceBody) > 0 {
+			callerConfig = extractSourceThinkingConfig(sourceBody, fromFormat)
+		}
+		if !hasThinkingConfig(callerConfig) {
+			callerConfig = extractThinkingConfig(body, providerFormat)
+		}
+		warnSuffixRewrite(providerFormat, model, callerConfig, config)
 	} else {
 		config = sourceConfig
 		if !hasThinkingConfig(config) && !updatesChanged && modelInfoResolved && len(sourceBody) > 0 {
@@ -530,6 +539,14 @@ func applyUserDefinedModel(body []byte, modelInfo *registry.ModelInfo, fromForma
 			"budget":   config.Budget,
 			"level":    config.Level,
 		}).Debug("thinking: config from model suffix |")
+		callerConfig := sourceConfig
+		if !hasThinkingConfig(callerConfig) {
+			callerConfig = extractThinkingConfig(body, fromFormat)
+		}
+		if !hasThinkingConfig(callerConfig) && fromFormat != toFormat {
+			callerConfig = extractThinkingConfig(body, toFormat)
+		}
+		warnSuffixRewrite(toFormat, modelID, callerConfig, config)
 	} else {
 		config = sourceConfig
 		if !hasThinkingConfig(config) {
@@ -968,4 +985,38 @@ func extractCodexUsageConfig(body []byte) ThinkingConfig {
 		return config
 	}
 	return extractCodexConfig(body)
+}
+
+// warnSuffixRewrite says, at the default log level, that a model suffix
+// replaced an effort the caller put in the body. An effort-suffixed slug
+// ("claude-opus-5-5-medium") is a pin: whatever the caller sent is ignored,
+// and the operator must be able to see that in the log the way a clamp shows.
+// A caller that sent no effort, or the same one, is not a rewrite.
+func warnSuffixRewrite(provider, model string, caller, applied ThinkingConfig) {
+	if !hasThinkingConfig(caller) {
+		return
+	}
+	if caller.Mode == applied.Mode && caller.Level == applied.Level && caller.Budget == applied.Budget {
+		return
+	}
+	log.WithFields(log.Fields{
+		"provider":       provider,
+		"model":          model,
+		"original_value": thinkingConfigValue(caller),
+		"rewritten_to":   thinkingConfigValue(applied),
+	}).Warn("thinking: caller effort rewritten by model suffix |")
+}
+
+// thinkingConfigValue renders a config the way a caller would have written it.
+func thinkingConfigValue(config ThinkingConfig) string {
+	switch config.Mode {
+	case ModeLevel:
+		return string(config.Level)
+	case ModeNone:
+		return "none"
+	case ModeAuto:
+		return "auto"
+	default:
+		return strconv.Itoa(config.Budget)
+	}
 }
