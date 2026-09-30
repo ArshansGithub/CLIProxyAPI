@@ -175,6 +175,7 @@ func announceCacheKeepalive(settings internalconfig.ClaudeCodeCacheKeepaliveConf
 		previous.AgentIdleWindow != settings.AgentIdleWindow ||
 		previous.MaxProbes != settings.MaxProbes ||
 		previous.MaxProbes5m != settings.MaxProbes5m ||
+		previous.IdleGraceProbes != settings.IdleGraceProbes ||
 		previous.MaxTokens != settings.MaxTokens
 }
 
@@ -214,6 +215,7 @@ func (s *Service) applyCacheKeepaliveConfig(cfg *config.Config) {
 		AgentIdleWindow:      settings.AgentIdleWindow,
 		MaxProbes:            settings.MaxProbes,
 		MaxProbes5m:          settings.MaxProbes5m,
+		IdleGraceProbes:      settings.IdleGraceProbes,
 		MaxTokens:            settings.MaxTokens,
 	}
 
@@ -239,8 +241,8 @@ func (s *Service) applyCacheKeepaliveConfig(cfg *config.Config) {
 		scheduler.ApplyConfig(runtimeCfg)
 	}
 	if changed {
-		log.Infof("cache-keepalive: enabled | before-expiry=%s before-expiry-5m=%s probe-5m=%s only-when-agents-active=%t liveness=%s agent-idle-window=%s max-probes=%d max-probes-5m=%d max-tokens=%d",
+		log.Infof("cache-keepalive: enabled | before-expiry=%s before-expiry-5m=%s probe-5m=%s only-when-agents-active=%t liveness=%s agent-idle-window=%s max-probes=%d max-probes-5m=%d idle-grace-probes=%d max-tokens=%d",
 			settings.BeforeExpiry, settings.BeforeExpiry5m, settings.Probe5m, settings.OnlyWhenAgentsActive, settings.Liveness,
-			settings.AgentIdleWindow, settings.MaxProbes, settings.MaxProbes5m, settings.MaxTokens)
+			settings.AgentIdleWindow, settings.MaxProbes, settings.MaxProbes5m, settings.IdleGraceProbes, settings.MaxTokens)
 	}
 }
