@@ -1234,6 +1234,14 @@ usage-cache-stats:
 
 # Retry the same credential on an upstream 529 overload before failing over, so a
 # warm prompt cache is not abandoned for a short burst. Fork feature.
+# Refuse a bare id for a model whose effort is pinned through the effort-suffixed
+# slug (claude-opus-5-5-medium, gpt-6.1-sol-high). A bare id would run at whatever
+# effort reached the proxy; the refusal names the slugs. /cache.html has a switch
+# that allows bare ids for the running process.
+# effort-pin:
+#   enabled: true
+#   models: [claude-opus-5-5, claude-sonnet-5-5, gpt-6.1-sol, gpt-6-luna]
+#   allow-bare: false
 overload-retry:
   enabled: false
   attempts: 3

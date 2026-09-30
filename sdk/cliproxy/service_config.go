@@ -202,6 +202,7 @@ func (s *Service) applyConfigRuntime(ctx context.Context, commit configCommit, s
 	s.syncPluginModelRuntime(registrationCtx)
 	s.applyCacheKeepaliveConfig(cfg)
 	s.applyCacheStatsConfig(cfg)
+	s.applyEffortPinConfig(cfg)
 	return ctx.Err() == nil
 }
 

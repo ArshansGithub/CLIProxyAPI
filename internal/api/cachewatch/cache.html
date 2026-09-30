@@ -223,6 +223,15 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
     <p class="muted" style="margin:8px 0 0">"Reset perceived quota" clears what the proxy remembers about an account's cooldown and quota so it routes there again. It changes nothing at Anthropic: if the account is still out of quota upstream, the next request marks it again.</p>
   </section>
 
+  <section>
+    <div class="row-head">
+      <h2>Effort pin</h2>
+      <div class="controls"><button type="button" class="quiet" id="effort-pin-toggle" disabled>…</button></div>
+    </div>
+    <div id="effort-pin"></div>
+    <p class="muted" style="margin:8px 0 0">A pinned model must be asked for by an effort-suffixed slug (<code>scoped/claude-opus-5-5-medium</code>, <code>gpt-6.1-sol-high</code>): the slug's effort is forced on the upstream call and any effort sent beside it is logged as a rewrite. A bare id (<code>claude-opus-5-5</code>, with or without an account prefix) would run at whatever effort reached the proxy, so it is refused with a 400 naming the slugs. The switch lifts the refusal for this process only; <code>effort-pin.allow-bare</code> in config.yaml is what survives a restart.</p>
+  </section>
+
   <div class="two">
     <section>
       <div class="row-head">
@@ -278,15 +287,16 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
 
   async function poll() {
     try {
-      const [stats, keepalive, versions, events, accounts, drops] = await Promise.all([
+      const [stats, keepalive, versions, events, accounts, drops, effortPin] = await Promise.all([
         api('/v0/management/cache-stats'),
         api('/v0/management/cache-keepalive').catch((e) => (e.status === 404 ? { enabled: false, sessions: [], counters: {} } : Promise.reject(e))),
         api('/v0/management/claude-client-versions').catch(() => null),
         api('/v0/management/cache-stats/events?after=' + state.latestSeq + '&limit=300').catch((e) => (e.status === 404 ? null : Promise.reject(e))),
         api('/v0/management/auth-files').catch(() => null),
         api('/v0/management/signature-drops').catch(() => null),
+        api('/v0/management/effort-pin').catch(() => null),
       ]);
-      state.stats = stats; state.keepalive = keepalive; state.versions = versions; state.drops = drops;
+      state.stats = stats; state.keepalive = keepalive; state.versions = versions; state.drops = drops; state.effortPin = effortPin;
       if (accounts) state.accounts = accounts;
       if (events) {
         if (events.latest_seq < state.latestSeq) state.events = [];
@@ -350,7 +360,7 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
 
   // ---- render ------------------------------------------------------------
   function render() {
-    renderHeader(); renderBanners(); renderSessions(); renderAccounts(); renderEvents(); renderKeepalive();
+    renderHeader(); renderBanners(); renderSessions(); renderAccounts(); renderEffortPin(); renderEvents(); renderKeepalive();
     $('foot').textContent = (state.serverVersion ? 'Proxy ' + state.serverVersion + '. ' : '') + 'Polls every 5 seconds. A session counts as live for 15 minutes after its last request. "Lost" is cached tokens a request could have read but did not; "cold" is a request that read nothing from cache.';
   }
 
@@ -378,8 +388,39 @@ footer { color: var(--ink-3); font-size: 12.5px; margin-top: 40px; border-top: 1
     const kaMiss = state.keepalive && state.keepalive.counters && state.keepalive.counters.misses;
     if (kaMiss) out.push(`<div class="banner">${kaMiss} keepalive probe${kaMiss > 1 ? 's' : ''} found the entry already gone. See the probe list.</div>`);
     out.push(...signatureDropBanners(state.drops));
+    out.push(...effortPinBanners(state.effortPin));
     $('banners').innerHTML = out.join('');
   }
+
+  // The effort pin refuses a bare id for a model whose effort lives in the
+  // slug. While the switch allows bare ids, an effort regression is silent
+  // again, so the page says so in red until it is switched back.
+  function effortPinBanners(p) {
+    if (!p || !p.enabled) return [];
+    if (p.allow_bare) return [`<div class="banner bad"><b>Bare model ids are allowed.</b> The effort pin is switched off for this process (${fmt(p.allowed_bare)} bare request${p.allowed_bare === 1 ? '' : 's'} let through${p.last_allowed_model ? ', last <code>' + esc(p.last_allowed_model) + '</code> ' + ago(p.last_allowed_at) : ''}). A pinned model asked for without its effort slug runs at whatever effort reached the proxy. Switch it back on below.</div>`];
+    if (p.refusals && p.last_refused_at && Date.now() - new Date(p.last_refused_at) < 6 * 3600e3) return [`<div class="banner">The effort pin refused ${fmt(p.refusals)} request${p.refusals === 1 ? '' : 's'} since start, last <code>${esc(p.last_refused_model)}</code> ${ago(p.last_refused_at)}: a caller named a pinned model without its effort slug. That caller needs the slug, not the switch.</div>`];
+    return [];
+  }
+
+  function renderEffortPin() {
+    const p = state.effortPin; const btn = $('effort-pin-toggle');
+    if (!p) { $('effort-pin').innerHTML = '<div class="empty">The proxy does not answer <code>/v0/management/effort-pin</code>.</div>'; btn.disabled = true; btn.textContent = '…'; return; }
+    if (!p.enabled) { $('effort-pin').innerHTML = '<div class="empty">Off in config.yaml (<code>effort-pin.enabled: false</code>). Bare ids pass.</div>'; btn.disabled = true; btn.textContent = 'off in config'; return; }
+    const models = (p.models || []).map((m) => '<code>' + esc(m) + '</code>').join(', ');
+    $('effort-pin').innerHTML = `<p style="margin:0">${p.allow_bare ? '<b class="error">Bare ids allowed</b>' : '<b>Refusing bare ids</b>'} for ${models}. Refused ${fmt(p.refusals)}${p.last_refused_model ? ' (last <code>' + esc(p.last_refused_model) + '</code> ' + ago(p.last_refused_at) + ')' : ''}; let through while off ${fmt(p.allowed_bare)}${p.last_allowed_model ? ' (last <code>' + esc(p.last_allowed_model) + '</code> ' + ago(p.last_allowed_at) + ')' : ''}.</p>`;
+    btn.disabled = !!state.effortPinBusy;
+    btn.className = p.allow_bare ? 'reset-quota' : 'quiet';
+    btn.textContent = state.effortPinBusy ? 'Switching' : (p.allow_bare ? 'Refuse bare ids again' : 'Allow bare ids for this process');
+  }
+
+  $('effort-pin-toggle').addEventListener('click', async () => {
+    const p = state.effortPin; if (!p || !p.enabled || state.effortPinBusy) return;
+    state.effortPinBusy = true; renderEffortPin();
+    try {
+      state.effortPin = await api('/v0/management/effort-pin', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ allow_bare: !p.allow_bare }) });
+    } catch (e) { state.lastErr = 'effort-pin switch failed: ' + e.message; }
+    state.effortPinBusy = false; renderEffortPin(); renderBanners();
+  });
 
   // The proxy drops a thinking block whose CAIS signature carries a generation
   // id it does not recognize, and the request still succeeds, so the only

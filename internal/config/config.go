@@ -103,6 +103,10 @@ type Config struct {
 	// failing over, so a warm prompt cache is not abandoned for a short burst.
 	OverloadRetry OverloadRetryConfig `yaml:"overload-retry" json:"overload-retry"`
 
+	// EffortPin refuses bare ids for models whose effort is pinned through
+	// the effort-suffixed slug (fork-only; see EffortPinConfig).
+	EffortPin EffortPinConfig `yaml:"effort-pin" json:"effort-pin"`
+
 	// Routing controls credential selection behavior.
 	Routing RoutingConfig `yaml:"routing" json:"routing"`
 
