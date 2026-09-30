@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/api/cachewatch"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/managementasset"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/buildinfo"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/managementasset"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -21,6 +24,7 @@ func (s *Server) registerManagementRoutes() {
 
 	log.Info("management routes registered after secret key configuration")
 
+	s.registerManagementV8Routes()
 	s.engine.POST("/v0/management/oauth-callback", s.managementAvailabilityMiddleware(), s.mgmt.PostOAuthCallback)
 	s.engine.GET("/v0/management/oauth-callback", s.managementAvailabilityMiddleware(), s.mgmt.GetOAuthCallback)
 
@@ -39,6 +43,12 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.GET("/plugins/:id/config", s.mgmt.GetPluginConfig)
 		mgmt.PUT("/plugins/:id/config", s.mgmt.PutPluginConfig)
 		mgmt.PATCH("/plugins/:id/config", s.mgmt.PatchPluginConfig)
+		mgmt.GET("/plugins/:id/quota", s.mgmt.GetPluginQuota)
+		mgmt.POST("/plugins/:id/quota", s.mgmt.FetchPluginQuota)
+		mgmt.DELETE("/plugins/:id/quota", s.mgmt.ResetPluginQuota)
+		mgmt.POST("/plugins/:id/quota/reset", s.mgmt.ResetPluginQuota)
+
+		mgmt.GET("/claude-client-versions", s.mgmt.GetClaudeClientVersions)
 
 		mgmt.GET("/debug", s.mgmt.GetDebug)
 		mgmt.PUT("/debug", s.mgmt.PutDebug)
@@ -76,12 +86,18 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PATCH("/quota-exceeded/switch-preview-model", s.mgmt.PutSwitchPreviewModel)
 		mgmt.POST("/reset-quota", s.mgmt.ResetQuota)
 
+		mgmt.GET("/quota/providers", s.mgmt.GetQuotaProviders)
+		mgmt.POST("/quota/fetch", s.mgmt.FetchCredentialQuota)
+		mgmt.POST("/quota/reset", s.mgmt.ResetCredentialQuota)
+
 		mgmt.GET("/api-keys", s.mgmt.GetAPIKeys)
 		mgmt.PUT("/api-keys", s.mgmt.PutAPIKeys)
 		mgmt.PATCH("/api-keys", s.mgmt.PatchAPIKeys)
 		mgmt.DELETE("/api-keys", s.mgmt.DeleteAPIKeys)
 		mgmt.GET("/api-key-usage", s.mgmt.GetAPIKeyUsage)
 		mgmt.GET("/usage-queue", s.mgmt.GetUsageQueue)
+
+		mgmt.GET("/cache-keepalive", s.mgmt.GetCacheKeepalive)
 
 		mgmt.GET("/gemini-api-key", s.mgmt.GetGeminiKeys)
 		mgmt.PUT("/gemini-api-key", s.mgmt.PutGeminiKeys)
@@ -92,6 +108,22 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PUT("/interactions-api-key", s.mgmt.PutInteractionsKeys)
 		mgmt.PATCH("/interactions-api-key", s.mgmt.PatchInteractionsKey)
 		mgmt.DELETE("/interactions-api-key", s.mgmt.DeleteInteractionsKey)
+
+		mgmt.GET("/cache-stats", s.mgmt.GetCacheStats)
+		// A fallback session key embeds the model name, which can contain
+		// slashes, so the id is matched as a catch-all rather than one segment.
+		mgmt.GET("/cache-stats/events", s.mgmt.GetCacheStatsEvents)
+		mgmt.GET("/cache-stats/sessions/*id", s.mgmt.GetCacheStatsSession)
+		mgmt.DELETE("/cache-stats", s.mgmt.DeleteCacheStats)
+		// Thinking history stripped for unrecognized CAIS generations; the
+		// cache watch page shows a banner while this is non-zero.
+		mgmt.GET("/signature-drops", s.mgmt.GetSignatureDrops)
+		mgmt.DELETE("/signature-drops", s.mgmt.DeleteSignatureDrops)
+		// Bare ids for effort-pinned models are refused; the watch page's
+		// switch lifts that for the running process.
+		mgmt.GET("/effort-pin", s.mgmt.GetEffortPin)
+		mgmt.PUT("/effort-pin", s.mgmt.PutEffortPin)
+		mgmt.PATCH("/effort-pin", s.mgmt.PutEffortPin)
 
 		mgmt.GET("/logs", s.mgmt.GetLogs)
 		mgmt.DELETE("/logs", s.mgmt.DeleteLogs)
@@ -138,6 +170,11 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PATCH("/xai-api-key", s.mgmt.PatchXAIKey)
 		mgmt.DELETE("/xai-api-key", s.mgmt.DeleteXAIKey)
 
+		mgmt.GET("/meta-api-key", s.mgmt.GetMetaKeys)
+		mgmt.PUT("/meta-api-key", s.mgmt.PutMetaKeys)
+		mgmt.PATCH("/meta-api-key", s.mgmt.PatchMetaKey)
+		mgmt.DELETE("/meta-api-key", s.mgmt.DeleteMetaKey)
+
 		mgmt.GET("/openai-compatibility", s.mgmt.GetOpenAICompat)
 		mgmt.PUT("/openai-compatibility", s.mgmt.PutOpenAICompat)
 		mgmt.PATCH("/openai-compatibility", s.mgmt.PatchOpenAICompat)
@@ -171,13 +208,17 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.DELETE("/auth-files", s.mgmt.DeleteAuthFile)
 		mgmt.PATCH("/auth-files/status", s.mgmt.PatchAuthFileStatus)
 		mgmt.PATCH("/auth-files/fields", s.mgmt.PatchAuthFileFields)
+		mgmt.POST("/auth-files/refresh", s.mgmt.RefreshAuthFiles)
 		mgmt.POST("/vertex/import", s.mgmt.ImportVertexCredential)
 
 		mgmt.GET("/anthropic-auth-url", s.mgmt.RequestAnthropicToken)
 		mgmt.GET("/codex-auth-url", s.mgmt.RequestCodexToken)
 		mgmt.GET("/antigravity-auth-url", s.mgmt.RequestAntigravityToken)
 		mgmt.GET("/kimi-auth-url", s.mgmt.RequestKimiToken)
+		mgmt.GET("/kimi-ai-auth-url", s.mgmt.RequestKimiAIToken)
 		mgmt.GET("/xai-auth-url", s.mgmt.RequestXAIToken)
+		mgmt.GET("/devin-auth-url", s.mgmt.RequestDevinToken)
+		mgmt.GET("/meta-auth-url", s.mgmt.RequestMetaToken)
 		mgmt.GET("/get-auth-status", s.mgmt.GetAuthStatus)
 		mgmt.DELETE("/oauth-session", s.mgmt.CancelAuthSession)
 	}
@@ -295,6 +336,20 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 		c.AbortWithStatus(http.StatusNotFound)
 		return
 	}
+	if data, ok := managementasset.EmbeddedPanel(); ok {
+		// Locked build: stamp the reviewed bundle at serve time so the page
+		// visibly says which build it is and what the egress gate is doing.
+		// The embedded bytes stay untouched; see managementasset.Brand.
+		policy := egress.Current()
+		data = managementasset.Brand(data, managementasset.LockedBadge{
+			Version:    buildinfo.Version,
+			PanelTag:   managementasset.PanelTag(),
+			EgressMode: policy.Mode(),
+			HostCount:  policy.HostCount(),
+		})
+		c.Data(http.StatusOK, "text/html; charset=utf-8", data)
+		return
+	}
 	filePath := managementasset.FilePath(s.configFilePath)
 	if strings.TrimSpace(filePath) == "" {
 		c.AbortWithStatus(http.StatusNotFound)
@@ -317,4 +372,17 @@ func (s *Server) serveManagementControlPanel(c *gin.Context) {
 	}
 
 	c.File(filePath)
+}
+
+// serveCacheWatchPage serves the embedded prompt-cache watch page. It is gated
+// exactly like the management control panel: hidden in home mode and when the
+// panel is disabled, since it is only useful with management routes enabled.
+func (s *Server) serveCacheWatchPage(c *gin.Context) {
+	cfg := s.cfg
+	if cfg == nil || cfg.Home.Enabled || cfg.RemoteManagement.DisableControlPanel {
+		c.AbortWithStatus(http.StatusNotFound)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Data(http.StatusOK, "text/html; charset=utf-8", cachewatch.HTML())
 }

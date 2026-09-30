@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	internalconfig "github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
+	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 )
 
 const oauthModelAliasesAttributeKey = "model_aliases"
@@ -128,6 +128,13 @@ func preserveResolvedModelSuffix(resolved string, requestResult thinking.SuffixR
 		return resolved
 	}
 	if requestResult.HasSuffix && requestResult.RawSuffix != "" {
+		if requestResult.Hyphenated {
+			// An effort-suffixed slug keeps its spelling so the log names the
+			// model the caller asked for ("gpt-6.1-sol-high", not "gpt-6.1-sol(high)").
+			if candidate := resolved + "-" + requestResult.RawSuffix; thinking.ParseSuffix(candidate).HasSuffix {
+				return candidate
+			}
+		}
 		return resolved + "(" + requestResult.RawSuffix + ")"
 	}
 	return resolved
@@ -471,7 +478,7 @@ func modelAliasChannel(auth *Auth) string {
 // and auth kind. Returns empty string if the provider/authKind combination doesn't support
 // OAuth model alias (e.g., API key authentication).
 //
-// Built-in channels: vertex, aistudio, antigravity, claude, codex, kimi.
+// Built-in channels: vertex, aistudio, antigravity, claude, codex, kimi, xai, meta.
 // Plugin OAuth providers use their normalized provider key as the channel.
 func OAuthModelAliasChannel(provider, authKind string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
@@ -488,7 +495,7 @@ func OAuthModelAliasChannel(provider, authKind string) string {
 		return "claude"
 	case "codex":
 		return "codex"
-	case "aistudio", "antigravity", "kimi":
+	case "aistudio", "antigravity", "kimi", "kimi-ai", "kimi.ai", "kimi.com", "xai", "meta":
 		return provider
 	default:
 		return provider

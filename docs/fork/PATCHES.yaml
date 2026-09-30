@@ -1,0 +1,300 @@
+# Hand-maintained register of carried patches. `make patches` renders PATCHES.md.
+#
+# One entry per fork feature, per cherry-picked upstream PR, or per standalone
+# commit. Every non-merge commit above the base upstream tag must be matched by
+# exactly one entry; `make patches` prints the count of unannotated rows and it
+# must stay at 0.
+#
+# Fields:
+#   subject:    one exact commit subject
+#   subjects:   a list of exact commit subjects (use instead of `subject`)
+#   prefixes:   a list of subject prefixes this entry claims (optional).
+#               An exact `subject`/`subjects` match always wins over a prefix,
+#               so a single commit can be carved out of a prefix group.
+#   layer:      lock | feat | fix | pick
+#   upstream_pr: PR number on router-for-me/CLIProxyAPI, or null
+#   drop:       the condition under which the patch leaves the stack
+#   note:       free text (optional)
+
+# ---------------------------------------------------------------- picks -----
+
+- subjects:
+    - "fix(executor): recover truncated streamed tool calls"
+    - "fix(executor): keep synthesized streams alive"
+    - "fix(executor): bootstrap buffered tool streams"
+    - "fix(executor): stabilize synthesized stream metadata"
+    - "fix(executor): validate buffered replies before streaming"
+    - "fix(executor): preserve synthesized response tier"
+    - "fix(executor): preserve synthesized response metadata"
+    - "fix(executor): validate choices and keep tool call metadata"
+    - "fix(executor): validate tool calls and keep annotations"
+    - "fix(executor): preserve synthesized audio output"
+    - "fix(executor): require valid bodies and tool arguments"
+  layer: pick
+  upstream_pr: 5338
+  drop: "upstream merges #5338 (or ships an equivalent synthesized-stream fix)"
+  note: >-
+    kantar0's open PR, carried whole. The eleven commits are the same objects as
+    the PR head, so a rebase that lands after the merge drops them cleanly.
+
+- subjects:
+    - "fix(claude): recognize model-free native thinking signatures"
+    - "fix(claude): warn on unknown signature generations"
+    - "fix(claude): aggregate stale-generation warnings"
+    - "refactor(claude): classify unknown CAIS generations via exported helper"
+    - "fix(signature): validate model-free CAIS carrier before unknown-generation classification"
+    - "fix(claude): warn on unknown CAIS generations only for anchored drop decisions"
+  layer: pick
+  upstream_pr: 5422
+  drop: "upstream merges #5422"
+  note: >-
+    realies' open CAIS-signature PR. Six of its eight commits are carried; the
+    two later signature-container commits were not picked.
+
+    Documented divergence carried since the v7.2.159 rebase: upstream 75ce6352
+    (CAQS) rejects any envelope-version-4 block kind outside
+    {thinking, narration}, and this fork additionally accepts an envelope that
+    carries no block kind at all. Channel field 8 is optional, and this pick's
+    own model-free fixtures omit it -- modelFreeClaudeCAISSignatureForExecutorTest
+    in internal/runtime/executor/claude_executor_test.go builds the (4, 17)
+    "recognized" signature without one, and
+    TestClaudeExecutor_ExecuteWarnsForUnknownCAISGenerationAtDefaultInfo requires
+    that signature to survive. The allowlist also admits "tool_use", which this
+    pick's accepted table exercises. Everything else follows upstream: the rule
+    runs on the model-tagged and model-free paths alike, at upstream's position.
+    Re-check this hunk whenever #5422 moves.
+
+- subject: "fix(openai): reset upstream transport after local prewarm"
+  layer: pick
+  upstream_pr: 5566
+  drop: "upstream resets the upstream transport after a synthetic local prewarm"
+  note: >-
+    omsd512-W's open PR. Without it a Codex Desktop subagent spawned after the
+    parent thread compacted loses every tool. The PR's other commit,
+    "fix(openai): preserve local prewarm context during compact replay", was
+    dropped at the v7.2.159 rebase: bd03aabc (closes upstream #5631) ships the
+    equivalent and more, tracking the pending synthetic prewarm id and merging
+    the warm-up input into the followup instead of refusing it. Only the
+    transport reset is still fork-only, so only that commit is carried.
+
+- subject: "test(openai): subagent spawned after parent compaction keeps prewarm tools"
+  layer: fix
+  upstream_pr: 5566
+  drop: "drop together with the #5566 pick above"
+  note: "Fork-authored regression test for the behaviour #5566 fixes."
+
+# -------------------------------------------------- fork features (own PRs) --
+
+- prefixes:
+    - "keepalive:"
+  subjects:
+    - "config: add claude-code.cache-keepalive block"
+    - "config: add the 5-minute keepalive probe keys"
+    - "docs: describe the Claude Code prompt-cache keepalive feature"
+    - "docs: explain why 5m sessions are worth probing on Fable 5.1"
+  layer: feat
+  upstream_pr: 5446
+  drop: "upstream merges #5446 or ships an equivalent agent-aware keepalive"
+  note: >-
+    Agent-aware prompt-cache keepalive: the probe scheduler, its session keying
+    and liveness sources, the 5m/1h tier split, and the config and docs blocks
+    that belong to it.
+
+- subjects:
+    - "cachestats: bounded per-session prompt-cache statistics store"
+    - "cache-stats: management API, config example and docs"
+    - "cache-stats: cover every provider, attribute rebinds, alert on sustained loss"
+    - "cache-stats: address session keys that contain slashes"
+    - "config: cover usage-cache-stats defaults, overrides and validation"
+    - "docs: document provider signals, session keying, T0 causes and the loss alert"
+  layer: feat
+  upstream_pr: 5445
+  drop: "upstream merges #5445"
+  note: "The per-session prompt-cache statistics store and its management API, as submitted."
+
+- subject: "usage: capture the 5m/1h cache split, cache_miss_reason and session id"
+  layer: feat
+  upstream_pr: 5445
+  drop: "upstream merges #5445"
+  note: "Usage-record plumbing the statistics store reads from; part of #5445."
+
+- subject: "tui: provider column, provider filter, cache-signal awareness and loss alerts"
+  layer: feat
+  upstream_pr: 5445
+  drop: "upstream merges #5445"
+  note: "The TUI Cache tab; part of #5445."
+
+- subjects:
+    - "cache-stats: record loss events with causes and serve a built-in /cache.html watch page"
+    - "cache-stats: judge cache tiers per model lane and mark helper calls as sidecars"
+  layer: feat
+  upstream_pr: null
+  drop: "fold into #5445 on the next push to that PR, or keep as a fork extension"
+  note: "Fork-local extensions landed after #5445 was opened; not in the PR."
+
+- prefixes:
+    - "cache-watch:"
+  layer: feat
+  upstream_pr: null
+  drop: "drop together with the /cache.html watch page above"
+  note: >-
+    Presentation fixes for the built-in watch page, and the accounts table
+    with the reset-perceived-quota control (v8.0.3 rebase, 2026-09-28).
+
+- subjects:
+    - "signature: accept any CAIS generation at or above the observed floor"
+    - "signature-drops: count stripped thinking history and show it on the watch page"
+  layer: feat
+  upstream_pr: null
+  drop: >-
+    the floor stays for as long as the fork validates model-free CAIS at all;
+    the counter and banner go with the /cache.html watch page above
+  note: >-
+    2026-09-29. The enumerated allowlist ({2,4} x {16,17}) dropped every
+    channel-18 thinking block from 2026-09-19 to 2026-09-29 (93,667 requests
+    on claude-fable-5-1 and claude-opus-5-5), with a warn line in main.log as
+    the only symptom. Replaced by independent floors (envelope >= 2, channel
+    >= 16) so a generation bump passes; a process counter behind
+    GET/DELETE /v0/management/signature-drops feeds a red banner on
+    /cache.html while drops are recent.
+
+- subjects:
+    - "fix(claude): treat the pinned Claude Code version as a floor, not a lock"
+    - "fix(claude): correct the version-drift warning wording"
+  layer: fix
+  upstream_pr: 5444
+  drop: "upstream merges #5444"
+
+# ------------------------------------------------ standalone fork commits ----
+
+- subjects:
+    - "fix(executor): normalize bare-string Claude message content to block form"
+    - 'Revert "fix(executor): normalize bare-string Claude message content to block form"'
+  layer: fix
+  upstream_pr: null
+  drop: "both commits cancel; drop together on next rebase"
+
+- subject: "auth: retry the same credential on upstream 529 before failing over"
+  layer: feat
+  upstream_pr: null
+  drop: "upstream retries an overloaded credential before failing over"
+  note: >-
+    Failing over on an Anthropic 529 moves the session to a credential that has
+    never seen its cache prefix, costing a full cache rewrite.
+
+- subject: "codex: drop attachment metadata the public Responses API rejects on api-key upstreams"
+  layer: fix
+  upstream_pr: null
+  drop: "upstream strips internal_chat_message_metadata_passthrough for api-key Responses upstreams"
+
+- subject: "claude: never reshape a confirmed native client's cache ttl or betas"
+  layer: fix
+  upstream_pr: null
+  drop: "upstream stops rewriting the wire of a confirmed native Claude Code client"
+  note: "Re-asserts this fork's passthrough contract against upstream 2.1.258 reshaping."
+
+- subject: "codex: pass a caller's own Codex identity through instead of cloaking it"
+  layer: fix
+  upstream_pr: null
+  drop: "upstream stops forcing its built-in codex-tui identity onto a real Codex CLI"
+
+- subject: "codex: keep native Codex requests unreshaped after the v7.2.154 merge"
+  layer: fix
+  upstream_pr: null
+  drop: "re-evaluate at each rebase; the guard tracks upstream's Codex reshaping"
+  note: "Companion to the Codex identity passthrough, for reshaping added in v7.2.154."
+
+- subjects:
+    - "docs: build-from-source section for the cache-tooling branch"
+    - "docs: note the Homebrew DefaultConfigPath ldflag"
+  layer: feat
+  upstream_pr: null
+  drop: "never while this fork is built and installed from source"
+
+- subject: "fix: raise stale test fixtures to the 2.1.280 client floor"
+  layer: fix
+  upstream_pr: null
+  drop: "fold into #5444's test the next time that patch is rewritten"
+
+- subject: "fix: reconcile carried patches with v7.2.159's equivalents"
+  layer: fix
+  upstream_pr: null
+  drop: >-
+    fold each hunk into the patch it adjusts the next time that patch is
+    rewritten, or drop with the patch itself
+  note: >-
+    Follow-ups the v7.2.159 rebase could not fold into the commits they belong
+    to, because those commits had already been replayed: the CAQS / model-free
+    CAIS block-kind reconciliation in internal/signature, the cache-stats stream
+    test moved onto MergeStreamUsageDetail, and the prewarm regression test
+    moved onto upstream's normalizeResponsesWebsocketPrewarmFollowup.
+
+- subject: "fix(thinking): never rewrite a requested effort silently"
+  layer: fix
+  upstream_pr: null
+  drop: >-
+    upstream logs level clamps and high-intent remaps above Debug, warns when
+    it strips configuration_update items, honours a bare output_config.effort
+    in the Claude->Codex translator, and orders "ultra" above "max"
+  note: >-
+    Four places rewrote or dropped a caller's effort with nothing visible at
+    the default Info log level: clampLevel logged at Debug, the cross-family
+    xhigh/max remap logged nothing, stripConfigurationUpdates was silent, and
+    the Claude->Codex translator ignored output_config.effort whenever the
+    request had no thinking block and sent "medium". Each now warns with the
+    model, the requested effort and the applied one, or forwards the effort.
+    LevelUltra joins standardLevelOrder above max so a request for "ultra" on
+    a model without it clamps to max instead of failing validation.
+
+- subject: "feat(thinking): effort-suffixed model slugs pin the upstream effort"
+  layer: feat
+  upstream_pr: null
+  drop: >-
+    upstream accepts a hyphenated effort suffix on any model id with suffix
+    priority over the body, and logs the rewrite above Debug
+  note: >-
+    2026-09-29. Claude Code 2.1.284 with agent teams gives a subagent the
+    higher of the session's effort and its definition's (anthropics/claude-code
+    #80569), so a definition's effort pin does not hold. The pin moves into the
+    model id: "claude-opus-5-5-medium" is "claude-opus-5-5(medium)" spelled the
+    way an agent file can carry it (the harness strips "[1m]", not parentheses).
+    ParseSuffix, the one split point every layer already calls, reads a trailing
+    -minimal|-low|-medium|-high|-xhigh|-max when the whole id is not a
+    registered model and the remainder is, so real ids such as
+    gemini-3.1-pro-low and gpt-oss-120b-medium are untouched and prefixed
+    clones (scoped/claude-opus-5-5-medium) keep their account pin. The two
+    suffix-priority sites in apply.go warn when the body carried a different
+    effort (original_value, rewritten_to; the field joins the formatter's
+    allowlist), and the OAuth alias layer re-attaches a hyphen suffix in the
+    caller's spelling so the log names the slug.
+
+- subject: "feat(effort-pin): refuse bare ids for effort-pinned models, with a watch-page switch"
+  layer: feat
+  upstream_pr: null
+  drop: >-
+    upstream refuses, or can be configured to refuse, a model id that names no
+    effort for a configured set of models, with a runtime override
+  note: >-
+    2026-09-29, his 2668. With the effort in the slug, a bare id
+    (claude-opus-5-5, scoped/claude-opus-5-5, gpt-6.1-sol) is the one spelling
+    under which an effort can still drift with a client's session dial. The
+    effort-pin config block names the models; the auth manager's Execute and
+    ExecuteStream refuse a bare pinned id with a 400 naming the slugs and a
+    Warn line, before any credential is selected. GET/PUT
+    /v0/management/effort-pin reads and flips a per-process allow-bare switch
+    (the config value returns on reload); /cache.html shows the state, the
+    refusal and let-through counters, the switch, and a red banner while bare
+    ids are allowed. Fable is not in the set: the conductor's effort is his dial.
+
+# ----------------------------------------------------------- locked build ---
+
+- prefixes:
+    - "lock:"
+  layer: lock
+  upstream_pr: null
+  drop: "never"
+  note: >-
+    The privacy-locked build: spec and plan, the Makefile and install script,
+    lockedbuild.Enabled, the egress policy and its enforcement at every
+    transport and dialer, the embedded panel, the plugin refusals and the
+    embedded model snapshot. These are the reason the fork exists.

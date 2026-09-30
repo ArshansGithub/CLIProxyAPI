@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -237,7 +237,10 @@ func convertAutoToMidRange(config ThinkingConfig, support *registry.ThinkingSupp
 }
 
 // standardLevelOrder defines the canonical ordering of thinking levels from lowest to highest.
-var standardLevelOrder = []ThinkingLevel{LevelMinimal, LevelLow, LevelMedium, LevelHigh, LevelXHigh, LevelMax}
+// standardLevelOrder ranks the discrete levels for nearest-level clamping.
+// "ultra" is the Codex tier above "max" (GPT-6 Sol/Astra, GPT-5.6 Sol/Terra),
+// so an unsupported "ultra" clamps down to "max" and never the reverse on a tie.
+var standardLevelOrder = []ThinkingLevel{LevelMinimal, LevelLow, LevelMedium, LevelHigh, LevelXHigh, LevelMax, LevelUltra}
 
 // clampLevel clamps the given level to the nearest supported level.
 // On tie, prefers the lower level.
@@ -273,12 +276,15 @@ func clampLevel(level ThinkingLevel, modelInfo *registry.ModelInfo, provider str
 
 	if bestIdx >= 0 {
 		clamped := standardLevelOrder[bestIdx]
+		// The caller asked for a level this model does not offer. Rewriting it
+		// is the right fallback, but it must not be silent at the default log
+		// level: an operator who asked for "max" and got "high" needs to see it.
 		log.WithFields(log.Fields{
 			"provider":       provider,
 			"model":          model,
 			"original_value": string(level),
 			"clamped_to":     string(clamped),
-		}).Debug("thinking: level clamped |")
+		}).Warn("thinking: level clamped (requested level not supported by model) |")
 		return clamped
 	}
 	return level

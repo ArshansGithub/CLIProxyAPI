@@ -10,9 +10,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"golang.org/x/net/proxy"
 )
 
@@ -73,18 +75,36 @@ func Parse(raw string) (Setting, error) {
 	}
 }
 
+// ValidRequestProxy reports whether raw is a concrete execution proxy override.
+// The host must be present, and an explicit port must be in the range 1-65535.
+func ValidRequestProxy(raw string) bool {
+	setting, errParse := Parse(raw)
+	if errParse != nil || setting.Mode != ModeProxy || setting.URL == nil {
+		return false
+	}
+	if strings.TrimSpace(setting.URL.Hostname()) == "" {
+		return false
+	}
+	port := setting.URL.Port()
+	if port == "" {
+		return true
+	}
+	number, errPort := strconv.Atoi(port)
+	return errPort == nil && number >= 1 && number <= 65535
+}
+
 func cloneDefaultTransport() *http.Transport {
 	if transport, ok := http.DefaultTransport.(*http.Transport); ok && transport != nil {
-		return transport.Clone()
+		return egress.GuardTransport(transport.Clone(), "proxyutil.cloneDefaultTransport")
 	}
-	return &http.Transport{}
+	return egress.GuardTransport(&http.Transport{}, "proxyutil.cloneDefaultTransport")
 }
 
 // NewDirectTransport returns a transport that bypasses environment proxies.
 func NewDirectTransport() *http.Transport {
 	clone := cloneDefaultTransport()
 	clone.Proxy = nil
-	return clone
+	return egress.GuardTransport(clone, "proxyutil.NewDirectTransport")
 }
 
 // BuildHTTPTransport constructs an HTTP transport for the provided proxy setting.
@@ -107,7 +127,9 @@ func BuildHTTPTransport(raw string) (*http.Transport, Mode, error) {
 				password, _ := setting.URL.User.Password()
 				proxyAuth = &proxy.Auth{User: username, Password: password}
 			}
-			dialer, errSOCKS5 := proxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, proxy.Direct)
+			// The forward dialer is what connects to the proxy host, so it
+			// carries the egress check: Transport.Proxy never sees a SOCKS proxy.
+			dialer, errSOCKS5 := proxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, egress.GuardDialer(proxy.Direct, "proxyutil.BuildHTTPTransport socks5 proxy"))
 			if errSOCKS5 != nil {
 				return nil, setting.Mode, fmt.Errorf("create SOCKS5 dialer failed: %w", errSOCKS5)
 			}
@@ -116,17 +138,17 @@ func BuildHTTPTransport(raw string) (*http.Transport, Mode, error) {
 			transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
 				return dialer.Dial(network, addr)
 			}
-			return transport, setting.Mode, nil
+			return egress.GuardTransport(transport, "proxyutil.BuildHTTPTransport"), setting.Mode, nil
 		}
 		if setting.URL.Scheme == "https" {
 			transport := cloneDefaultTransport()
 			transport.Proxy = http.ProxyURL(setting.URL)
 			transport.DialTLSContext = buildHTTPSProxyDialTLSContext(setting.URL, nil, transport.TLSHandshakeTimeout, transport.DialContext)
-			return transport, setting.Mode, nil
+			return egress.GuardTransport(transport, "proxyutil.BuildHTTPTransport"), setting.Mode, nil
 		}
 		transport := cloneDefaultTransport()
 		transport.Proxy = http.ProxyURL(setting.URL)
-		return transport, setting.Mode, nil
+		return egress.GuardTransport(transport, "proxyutil.BuildHTTPTransport"), setting.Mode, nil
 	default:
 		return nil, setting.Mode, nil
 	}
@@ -196,10 +218,12 @@ func BuildDialer(raw string) (proxy.Dialer, Mode, error) {
 	case ModeDirect:
 		return proxy.Direct, setting.Mode, nil
 	case ModeProxy:
+		// Both dialers connect to the proxy host through the forward dialer,
+		// which is where the egress check on that host lives.
 		if setting.URL.Scheme == "http" || setting.URL.Scheme == "https" {
-			return &httpConnectDialer{proxyURL: setting.URL, dialer: proxy.Direct}, setting.Mode, nil
+			return &httpConnectDialer{proxyURL: setting.URL, dialer: egress.GuardDialer(proxy.Direct, "proxyutil.BuildDialer connect proxy")}, setting.Mode, nil
 		}
-		dialer, errDialer := proxy.FromURL(setting.URL, proxy.Direct)
+		dialer, errDialer := proxy.FromURL(setting.URL, egress.GuardDialer(proxy.Direct, "proxyutil.BuildDialer proxy"))
 		if errDialer != nil {
 			return nil, setting.Mode, fmt.Errorf("create proxy dialer failed: %w", errDialer)
 		}

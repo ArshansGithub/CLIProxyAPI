@@ -1,0 +1,6 @@
+source=router-for-me/models main (raw.githubusercontent.com/router-for-me/models/refs/heads/main, fetched 2026-09-29) plus one fork adjustment
+models.json.sha256=d3a9b6fd4c8fe34137ba3d57b4ba9785ce893a7bc64230248325427e1ad12360
+codex_client_models.json.sha256=8ebe5d117f8bff75874a0c15c64f8c568b510fad44cd4f41cc0385e43e8c1131
+devin_models.json.sha256=1aee55bcd7af6be17d18c04046d25aba9c63a635af1088bfa4b7dc04d4be3360
+snapshot-from=router-for-me/models main on 2026-09-29: adds gpt-6.1-sol (codex-team/plus/pro and the Codex client catalog; free-plan accounts do not receive it, verified against chatgpt.com/backend-api/codex/models with a free token), refreshes Codex client priorities/descriptions/plans, and takes upstream's claude-sonnet-5-5 row in place of the fork's hand-made one. Fork adjustment on top of the remote models.json: gpt-6.1-sol version is "gpt-6.1" (remote copy-pastes "gpt-6.0"). thinking.levels stay low..max even though the Codex client catalog lists "ultra": the backend rejects reasoning.effort=ultra on the wire ("Supported values are: none, minimal, low, medium, high, xhigh, and max", checked 2026-09-29), so ultra is a Codex CLI client-side mode and the proxy clamps it to max with a warning. The Codex client catalog is the remote file verbatim.
+reviewed=2026-09-29
