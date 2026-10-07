@@ -131,6 +131,9 @@ func ValidateConfig(config ThinkingConfig, modelInfo *registry.ModelInfo, fromFo
 
 	if len(support.Levels) > 0 && config.Mode == ModeLevel {
 		if !isLevelSupported(string(config.Level), support.Levels) {
+			if allowClampUnsupported && RefuseUnsupportedEffort() {
+				return nil, refuseEffort(toFormat, modelInfo.ID, strings.ToLower(string(config.Level)), normalizeLevels(support.Levels))
+			}
 			if allowClampUnsupported {
 				config.Level = clampLevel(config.Level, modelInfo, toFormat)
 			}
