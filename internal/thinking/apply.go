@@ -376,7 +376,7 @@ func applyThinking(body, sourceBody []byte, model string, fromFormat string, toF
 		requested := config.Level
 		config.Level = mapConfiguredHighIntent(config.Level, modelInfo)
 		if !strings.EqualFold(string(requested), string(config.Level)) {
-			if RefuseUnsupportedEffort() {
+			if RefuseUnsupportedEffort() && !isSameProviderFamily(fromFormat, providerFormat) {
 				return body, refuseEffort(providerFormat, modelInfo.ID, strings.ToLower(string(requested)), normalizeLevels(modelInfo.Thinking.Levels))
 			}
 			// The cross-family "as high as this model goes" rule changed the

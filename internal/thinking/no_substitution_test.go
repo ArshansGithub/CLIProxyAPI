@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	log "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
@@ -170,5 +171,48 @@ func TestConfigurationUpdateEqualToBaselineNotRefused(t *testing.T) {
 	}
 	if got := errorsMentioning(hook, "effort refused"); len(got) != 0 {
 		t.Fatalf("unexpected refusal: %v", got)
+	}
+}
+
+// Finding 2 of the branch review: the Kimi family clamp (same wire format,
+// different model family) is a kept conversion, not a refusal.
+func TestKimiFamilyClampKeptWhenSwitchOn(t *testing.T) {
+	t.Cleanup(func() { thinking.SetRefuseUnsupportedEffort(false) })
+	thinking.SetRefuseUnsupportedEffort(true)
+	models := registry.GetKimiModels()
+	reg := registry.GetGlobalRegistry()
+	clientID := "test-no-substitution-kimi"
+	reg.RegisterClient(clientID, "kimi", models)
+	t.Cleanup(func() { reg.UnregisterClient(clientID) })
+	body := []byte(`{"model":"kimi-k2.5","messages":[{"role":"user","content":"hi"}],"thinking":{"type":"adaptive"},"output_config":{"effort":"max"}}`)
+	out, err := thinking.ApplyThinking(body, "kimi-k2.5", "claude", "claude", "claude")
+	if err != nil {
+		t.Fatalf("Kimi max must still clamp, got error: %v", err)
+	}
+	if got := gjson.GetBytes(out, "output_config.effort").String(); got != "high" {
+		t.Fatalf("output_config.effort = %q, want high", got)
+	}
+}
+
+// Finding 3: an update of "none" against a baseline of "none" substitutes
+// nothing and must not be refused.
+func TestConfigurationUpdateNoneEqualToNoneBaselineNotRefused(t *testing.T) {
+	t.Cleanup(func() { thinking.SetRefuseUnsupportedEffort(false) })
+	thinking.SetRefuseUnsupportedEffort(true)
+	body := []byte(`{"model":"gpt-6.0-sol","reasoning":{"effort":"none"},"input":[{"type":"configuration_update","reasoning":{"effort":"none"}},{"type":"message","role":"user","content":"hi"}]}`)
+	if _, err := thinking.ApplyThinkingWithModelInfo(body, body, "gpt-6.0-sol", "codex", "codex", "codex", codexModel("gpt-6.0-sol", lunaLevels, false)); err != nil {
+		t.Fatalf("none against none must not be refused: %v", err)
+	}
+}
+
+// Finding 3: with no top-level effort at all, a dropped update is still a
+// substitution; the message says what the model is left with.
+func TestConfigurationUpdateWithoutBaselineRefusedWithClearMessage(t *testing.T) {
+	t.Cleanup(func() { thinking.SetRefuseUnsupportedEffort(false) })
+	thinking.SetRefuseUnsupportedEffort(true)
+	body := []byte(`{"model":"gpt-6.0-sol","input":[{"type":"configuration_update","reasoning":{"effort":"xhigh"}},{"type":"message","role":"user","content":"hi"}]}`)
+	_, err := thinking.ApplyThinkingWithModelInfo(body, body, "gpt-6.0-sol", "codex", "codex", "codex", codexModel("gpt-6.0-sol", lunaLevels, false))
+	if err == nil || !strings.Contains(err.Error(), "only the top-level reasoning.effort, which is unset") {
+		t.Fatalf("want the unset-baseline wording, got %v", err)
 	}
 }

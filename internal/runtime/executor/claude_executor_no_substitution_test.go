@@ -59,7 +59,8 @@ func nsRun(t *testing.T, cfg *config.Config, payload string, headers http.Header
 	executor := NewClaudeExecutor(cfg)
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{"api_key": "key-test", "base_url": server.URL}}
 	p := []byte(payload)
-	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{Model: "claude-opus-5-5", Payload: p}, cliproxyexecutor.Options{
+	model := gjson.GetBytes(p, "model").String()
+	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{Model: model, Payload: p}, cliproxyexecutor.Options{
 		SourceFormat: sdktranslator.FormatClaude, OriginalRequest: p, Headers: headers,
 	})
 	if err != nil {
@@ -193,5 +194,31 @@ func TestStripFallbacks_CreditTokenKeepsCreditBeta(t *testing.T) {
 	_, headers := nsRun(t, nsCloakCfg(), payload, http.Header{"User-Agent": {"curl/8.0"}})
 	if !strings.Contains(headers.Get("Anthropic-Beta"), "fallback-credit-2026-06-01") {
 		t.Fatalf("credit beta missing: %q", headers.Get("Anthropic-Beta"))
+	}
+}
+
+// Finding 1 of the branch review: with the switch OFF a cloaked caller's
+// fallback betas go out exactly as before this feature: 06-01 when requested
+// or when the body carries fallbacks, 07-01 when requested.
+func TestStripFallbacks_OffKeepsCallerFallbackBetas(t *testing.T) {
+	SetStripFallbacks(false)
+	both := "claude-code-20250219,server-side-fallback-2026-06-01,server-side-fallback-2026-07-01"
+	payload := `{"model":"claude-opus-5-5","max_tokens":64,"thinking":{"type":"adaptive"},"fallbacks":"default","messages":[{"role":"user","content":"do the task"}]}`
+	_, headers := nsRun(t, nsCloakCfg(), payload, http.Header{"User-Agent": {"curl/8.0"}, "Anthropic-Beta": {both}})
+	got := headers.Get("Anthropic-Beta")
+	for _, beta := range []string{"server-side-fallback-2026-06-01", "server-side-fallback-2026-07-01"} {
+		if !strings.Contains(got, beta) {
+			t.Fatalf("switch off: %s missing from %q", beta, got)
+		}
+	}
+	only07 := "claude-code-20250219,server-side-fallback-2026-07-01"
+	noBody := `{"model":"claude-opus-5","max_tokens":64,"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"do the task"}]}`
+	body, headers := nsRun(t, nsCloakCfg(), noBody, http.Header{"User-Agent": {"curl/8.0"}, "Anthropic-Beta": {only07}})
+	if gjson.GetBytes(body, "fallbacks").Exists() {
+		t.Fatalf("control: claude-opus-5 must not receive an injected fallback: %s", body)
+	}
+	got = headers.Get("Anthropic-Beta")
+	if !strings.Contains(got, "server-side-fallback-2026-07-01") || strings.Contains(got, "server-side-fallback-2026-06-01") {
+		t.Fatalf("switch off, 07-01 requested and no body fallbacks: want 07-01 and not 06-01, got %q", got)
 	}
 }
