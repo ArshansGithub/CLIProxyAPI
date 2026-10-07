@@ -34,32 +34,35 @@ import (
 )
 
 const (
-	claudeTokenCountingBeta          = "token-counting-2024-11-01"
-	claudeFastModeBeta               = "fast-mode-2026-02-01"
-	claudeOAuthBeta                  = "oauth-2025-04-20"
-	claudeCodeBeta                   = "claude-code-20250219"
-	claudeContext1MBeta              = "context-1m-2025-08-07"
-	claudeMidConvSystemBeta          = "mid-conversation-system-2026-04-07"
-	claudePerTurnControlBeta         = "per-turn-control-2026-07-01"
-	claudePerTurnTimingBeta          = "timing-2026-09-09"
-	claudeMidConvToolChangesBeta     = "mid-conversation-tool-changes-2026-07-01"
-	claudeInlineToolsBeta            = "inline-tools-2026-09-15"
-	claudeMidConvSystemClearAtBeta   = "mid-conversation-system-clear-at-2026-08-21"
-	claudeDangerousToolUseBeta       = "dangerous-tool-use-2026-09-03"
-	claudeAdvisorToolBeta            = "advisor-tool-2026-03-01"
-	claudeAdvancedToolUseBeta        = "advanced-tool-use-2025-11-20"
-	claudeEffortBeta                 = "effort-2025-11-24"
-	claudeServerSideFallbackBeta     = "server-side-fallback-2026-06-01"
-	claudeFallbackCreditBeta         = "fallback-credit-2026-06-01"
-	claudeStructuredOutputsBeta      = "structured-outputs-2025-12-15"
-	claudeThinkingDisplayUpdatesBeta = "thinking-display-updates-2026-08-18"
-	claudeThinkingBindingBeta        = "thinking-binding-controls-2026-08-01"
-	claudeThinkingResumptionBeta     = "thinking-resumption-2026-07-17"
-	claudeExtendedCacheTTLBeta       = "extended-cache-ttl-2025-04-11"
-	claudePromptCachingEvictBeta     = "prompt-caching-evict-2026-05-12"
-	claudeCacheDiagnosisBeta         = "cache-diagnosis-2026-04-07"
-	claudeRedactThinkingBeta         = "redact-thinking-2026-02-12"
-	claudeAFKModeBeta                = "afk-mode-2026-01-31"
+	claudeTokenCountingBeta        = "token-counting-2024-11-01"
+	claudeFastModeBeta             = "fast-mode-2026-02-01"
+	claudeOAuthBeta                = "oauth-2025-04-20"
+	claudeCodeBeta                 = "claude-code-20250219"
+	claudeContext1MBeta            = "context-1m-2025-08-07"
+	claudeMidConvSystemBeta        = "mid-conversation-system-2026-04-07"
+	claudePerTurnControlBeta       = "per-turn-control-2026-07-01"
+	claudePerTurnTimingBeta        = "timing-2026-09-09"
+	claudeMidConvToolChangesBeta   = "mid-conversation-tool-changes-2026-07-01"
+	claudeInlineToolsBeta          = "inline-tools-2026-09-15"
+	claudeMidConvSystemClearAtBeta = "mid-conversation-system-clear-at-2026-08-21"
+	claudeDangerousToolUseBeta     = "dangerous-tool-use-2026-09-03"
+	claudeAdvisorToolBeta          = "advisor-tool-2026-03-01"
+	claudeAdvancedToolUseBeta      = "advanced-tool-use-2025-11-20"
+	claudeEffortBeta               = "effort-2025-11-24"
+	claudeServerSideFallbackBeta   = "server-side-fallback-2026-06-01"
+	// claudeServerSideFallbackCategoryBeta is the 2.1.293 category form
+	// (fallbacks: "default"); managed like the 06-01 beta.
+	claudeServerSideFallbackCategoryBeta = "server-side-fallback-2026-07-01"
+	claudeFallbackCreditBeta             = "fallback-credit-2026-06-01"
+	claudeStructuredOutputsBeta          = "structured-outputs-2025-12-15"
+	claudeThinkingDisplayUpdatesBeta     = "thinking-display-updates-2026-08-18"
+	claudeThinkingBindingBeta            = "thinking-binding-controls-2026-08-01"
+	claudeThinkingResumptionBeta         = "thinking-resumption-2026-07-17"
+	claudeExtendedCacheTTLBeta           = "extended-cache-ttl-2025-04-11"
+	claudePromptCachingEvictBeta         = "prompt-caching-evict-2026-05-12"
+	claudeCacheDiagnosisBeta             = "cache-diagnosis-2026-04-07"
+	claudeRedactThinkingBeta             = "redact-thinking-2026-02-12"
+	claudeAFKModeBeta                    = "afk-mode-2026-01-31"
 )
 
 // claudeCodeCLIConstantBetas are the betas Claude Code sends on every
@@ -92,6 +95,7 @@ var claudeCodeTrailingBetas = []string{
 // their features keep working (#5738).
 var claudeManagedBetaSet = func() map[string]bool {
 	managed := []string{
+		claudeServerSideFallbackCategoryBeta,
 		claudeTokenCountingBeta,
 		claudeFastModeBeta,
 		claudeOAuthBeta,
@@ -232,7 +236,8 @@ func claudeCodeCLIBetas(body []byte, requested map[string]bool, oauthToken bool)
 		betas = append(betas, claudeEffortBeta)
 	}
 	isProbeOrHelper := helps.IsClaudeProbeOrHelperRequest(body)
-	if !isProbeOrHelper && (requested[claudeServerSideFallbackBeta] || gjson.GetBytes(body, "fallbacks").Exists()) {
+	hasFallbacks := gjson.GetBytes(body, "fallbacks").Exists()
+	if !isProbeOrHelper && (hasFallbacks || ((requested[claudeServerSideFallbackBeta] || requested[claudeServerSideFallbackCategoryBeta]) && !StripFallbacks())) {
 		betas = append(betas, claudeServerSideFallbackBeta)
 	}
 	shouldIncludeFallbackCredit := requested[claudeFallbackCreditBeta] ||
