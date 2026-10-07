@@ -299,6 +299,28 @@
     the cloaked path. Both ids are accepted; the beta-profile allowlist is
     unchanged until a 2.1.293 helper capture is reviewed.
 
+- subjects:
+    - "feat(no-substitution): config block with strip-fallbacks and refuse-unsupported-effort"
+    - "feat(no-substitution): process switches installed from config at startup and reload"
+    - "feat(no-substitution): refuse an explicit effort the model does not offer instead of clamping or remapping"
+    - "feat(no-substitution): refuse a mid-turn effort change the model cannot honour"
+    - "feat(no-substitution): strip the Claude fallbacks key on the finished body and never inject one"
+  layer: feat
+  upstream_pr: null
+  drop: "never; fork policy (docs/fork/specs/2026-10-07-no-substitution-design.md)"
+  note: >-
+    2026-10-07. After Claude Code 2.1.293 fixed teammate effort (#80569) the
+    effort slugs were retired on the client side; this is the loud-error half.
+    strip-fallbacks runs once on the finished Claude body, after the cloak
+    reconcile and payload rules and before CCH signing, and is the one named
+    exception to the 4f5cbbae passthrough promise: only the body key goes, a
+    confirmed native client's Anthropic-Beta header is forwarded as sent, with
+    one Warn per session. refuse-unsupported-effort turns the cross-family
+    clamp, the high-intent remap and the configuration_update drop into a 400
+    whose message begins effort_unsupported:, logged at Error; conversions
+    that substitute nothing (budget to level, auto to middle, none to lowest,
+    budget clamps) are kept on purpose.
+
 # ----------------------------------------------------------- locked build ---
 
 - prefixes:
