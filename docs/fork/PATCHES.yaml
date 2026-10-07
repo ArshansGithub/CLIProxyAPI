@@ -305,6 +305,7 @@
     - "feat(no-substitution): refuse an explicit effort the model does not offer instead of clamping or remapping"
     - "feat(no-substitution): refuse a mid-turn effort change the model cannot honour"
     - "feat(no-substitution): strip the Claude fallbacks key on the finished body and never inject one"
+    - "feat(no-substitution): keep same-family clamps, emit each fallback beta for itself, normalise the update baseline"
   layer: feat
   upstream_pr: null
   drop: "never; fork policy (docs/fork/specs/2026-10-07-no-substitution-design.md)"
@@ -319,7 +320,7 @@
     clamp, the high-intent remap and the configuration_update drop into a 400
     whose message begins effort_unsupported:, logged at Error; conversions
     that substitute nothing (budget to level, auto to middle, none to lowest,
-    budget clamps) are kept on purpose.
+    budget clamps, the same-wire Kimi family clamp) are kept on purpose.
 
 # ----------------------------------------------------------- locked build ---
 
