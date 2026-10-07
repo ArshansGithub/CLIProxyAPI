@@ -116,13 +116,13 @@ func StripConfigurationUpdatesDoc(doc *ojson.Doc) {
 // items and, when any carried a reasoning effort, warns with the model and the
 // effort that was dropped. A Codex client that changed effort mid-turn would
 // otherwise keep running at the top-level baseline with nothing in the log.
-func stripConfigurationUpdatesLoggedDoc(doc *ojson.Doc, docValid bool, provider, model string, modelInfo *registry.ModelInfo) bool {
+func stripConfigurationUpdatesLoggedDoc(doc *ojson.Doc, docValid bool, provider, model string, modelInfo *registry.ModelInfo) (bool, error) {
 	dropped := extractConfigurationUpdateConfigDoc(doc, docValid)
 	if !stripConfigurationUpdatesDoc(doc, docValid) {
-		return false
+		return false, nil
 	}
 	if !hasThinkingConfig(dropped) {
-		return true
+		return true, nil
 	}
 	if modelInfo != nil && modelInfo.ID != "" {
 		model = modelInfo.ID
@@ -135,13 +135,18 @@ func stripConfigurationUpdatesLoggedDoc(doc *ojson.Doc, docValid bool, provider,
 		droppedEffort = string(LevelAuto)
 	}
 	baseline := extractCodexConfigFromGetter(doc.Get)
+	if RefuseUnsupportedEffort() && !strings.EqualFold(droppedEffort, string(baseline.Level)) {
+		// The model cannot change effort mid-turn, so the only effort it can
+		// honour is the top-level baseline; that is what it "offers" here.
+		return true, refuseEffort(provider, model, droppedEffort, []string{string(baseline.Level)})
+	}
 	log.WithFields(log.Fields{
 		"provider":       provider,
 		"model":          model,
 		"dropped_effort": droppedEffort,
 		"baseline":       string(baseline.Level),
 	}).Warn("thinking: configuration_update effort dropped (model does not support in-turn updates) |")
-	return true
+	return true, nil
 }
 
 // stripConfigurationUpdates removes unsupported Responses input items without
