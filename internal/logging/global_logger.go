@@ -55,7 +55,7 @@ var logFieldOrder = []string{
 	"provider", "model",
 	"plugin_id", "plugin_name", "source_id",
 	"version", "active_version", "retired_version", "overwritten",
-	"mode", "budget", "level", "original_mode", "original_value", "min", "max", "clamped_to", "rewritten_to", "error",
+	"mode", "budget", "level", "original_mode", "original_value", "min", "max", "clamped_to", "rewritten_to", "requested", "supported", "strip_fallbacks", "refuse_unsupported_effort", "shape", "session", "error",
 	"credential", "connection", "proxy_scheme", "remote_transport",
 	"media_session_id", "call_id", "peer", "state", "reason",
 }
