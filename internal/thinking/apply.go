@@ -300,8 +300,12 @@ func applyThinkingDocCore(doc *ojson.Doc, docValid bool, sourceBody []byte, mode
 	responseTarget := providerFormat == "codex" || providerFormat == "xai"
 	supportsUpdates := modelInfo != nil && modelInfo.SupportConfigurationUpdate
 	if responseTarget && !supportsUpdates {
-		if stripConfigurationUpdatesLoggedDoc(doc, docValid, providerFormat, baseModel, modelInfo) {
+		stripped, errStrip := stripConfigurationUpdatesLoggedDoc(doc, docValid, providerFormat, baseModel, modelInfo)
+		if stripped {
 			modified = true
+		}
+		if errStrip != nil {
+			return modified, errStrip
 		}
 	}
 	nativeResponses := responseTarget && isResponsesFormat(fromFormat) && supportsUpdates

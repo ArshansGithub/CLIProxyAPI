@@ -121,3 +121,54 @@ func TestRemapRefusedWhenSwitchOn(t *testing.T) {
 		t.Fatalf("switch off: want the old remap Warn, got %v", hook.AllEntries())
 	}
 }
+
+// A Codex client changing effort mid-turn on a model without in-turn updates
+// is refused under the switch when the dropped effort differs from the
+// top-level baseline, and still stripped with the old Warn without it.
+func TestConfigurationUpdateDropRefusedWhenSwitchOn(t *testing.T) {
+	t.Cleanup(func() { thinking.SetRefuseUnsupportedEffort(false) })
+	hook := captureWarnings(t)
+	body := []byte(`{"model":"gpt-6.0-sol","reasoning":{"effort":"medium"},"input":[{"type":"configuration_update","reasoning":{"effort":"xhigh"}},{"type":"message","role":"user","content":"hi"}]}`)
+	info := codexModel("gpt-6.0-sol", lunaLevels, false)
+
+	thinking.SetRefuseUnsupportedEffort(true)
+	_, err := thinking.ApplyThinkingWithModelInfo(body, body, "gpt-6.0-sol", "codex", "codex", "codex", info)
+	if err == nil || !strings.Contains(err.Error(), `does not offer effort "xhigh"; it offers medium`) {
+		t.Fatalf("want the refusal naming the baseline as the offer, got %v", err)
+	}
+	if got := errorsMentioning(hook, "effort refused"); len(got) != 1 {
+		t.Fatalf("want one Error line, got %v", hook.AllEntries())
+	}
+
+	hook.Reset()
+	thinking.SetRefuseUnsupportedEffort(false)
+	out, err := thinking.ApplyThinkingWithModelInfo(body, body, "gpt-6.0-sol", "codex", "codex", "codex", info)
+	if err != nil {
+		t.Fatalf("switch off: %v", err)
+	}
+	if got := gjson.GetBytes(out, "input.#").Int(); got != 1 {
+		t.Fatalf("switch off: input length = %d, want 1", got)
+	}
+	if got := warningsMentioning(hook, "configuration_update"); len(got) != 1 {
+		t.Fatalf("switch off: want the old drop Warn, got %v", hook.AllEntries())
+	}
+}
+
+// An update whose effort equals the baseline substitutes nothing: stripped
+// silently even with the switch on.
+func TestConfigurationUpdateEqualToBaselineNotRefused(t *testing.T) {
+	t.Cleanup(func() { thinking.SetRefuseUnsupportedEffort(false) })
+	thinking.SetRefuseUnsupportedEffort(true)
+	hook := captureWarnings(t)
+	body := []byte(`{"model":"gpt-6.0-sol","reasoning":{"effort":"medium"},"input":[{"type":"configuration_update","reasoning":{"effort":"medium"}},{"type":"message","role":"user","content":"hi"}]}`)
+	out, err := thinking.ApplyThinkingWithModelInfo(body, body, "gpt-6.0-sol", "codex", "codex", "codex", codexModel("gpt-6.0-sol", lunaLevels, false))
+	if err != nil {
+		t.Fatalf("ApplyThinking: %v", err)
+	}
+	if got := gjson.GetBytes(out, "input.#").Int(); got != 1 {
+		t.Fatalf("input length = %d, want 1 (update stripped)", got)
+	}
+	if got := errorsMentioning(hook, "effort refused"); len(got) != 0 {
+		t.Fatalf("unexpected refusal: %v", got)
+	}
+}
