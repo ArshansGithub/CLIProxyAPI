@@ -444,6 +444,9 @@ func applyThinkingDocCore(doc *ojson.Doc, docValid bool, sourceBody []byte, mode
 		requested := config.Level
 		config.Level = mapConfiguredHighIntent(config.Level, modelInfo)
 		if !strings.EqualFold(string(requested), string(config.Level)) {
+			if RefuseUnsupportedEffort() {
+				return body, refuseEffort(providerFormat, modelInfo.ID, strings.ToLower(string(requested)), normalizeLevels(modelInfo.Thinking.Levels))
+			}
 			// The cross-family "as high as this model goes" rule changed the
 			// level. Say so at the default log level; the caller asked for a
 			// specific effort and is getting a different one.
