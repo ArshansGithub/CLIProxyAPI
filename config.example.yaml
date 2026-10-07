@@ -1256,6 +1256,17 @@ overload-retry:
   backoff: 5s
   max-backoff: 20s
 
+# No-substitution (fork-only, 2026-10-07): make a model or effort substitution loud.
+# strip-fallbacks deletes the Claude `fallbacks` body key from every request and
+# never injects one, so a safety refusal comes back as a refusal, not as an answer
+# from another model; a confirmed native client's beta header is left as sent.
+# refuse-unsupported-effort answers 400 ("effort_unsupported: ...") when a caller
+# names an effort the model does not offer, instead of clamping, remapping or
+# dropping it with a warning. Both default to false.
+no-substitution:
+  strip-fallbacks: false
+  refuse-unsupported-effort: false
+
 observability:
   logs:
     # Enable debug logging
