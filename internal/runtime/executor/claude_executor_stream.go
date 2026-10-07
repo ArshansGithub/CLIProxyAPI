@@ -206,6 +206,7 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		isProbeOrHelper,
 	)
 	body = ensureModelMaxTokens(body, baseModel)
+	body = stripFallbacksForUpstream(body, confirmedClaudeCode, stripSessionKey(claudeSessionID, incomingHeaders))
 
 	// Disable thinking if tool_choice forces tool use (Anthropic API constraint)
 	body = disableThinkingIfToolChoiceForced(body)
