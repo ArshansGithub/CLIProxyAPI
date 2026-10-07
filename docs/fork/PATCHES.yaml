@@ -286,6 +286,19 @@
     refusal and let-through counters, the switch, and a red banner while bare
     ids are allowed. Fable is not in the set: the conductor's effort is his dial.
 
+- subject: "fix(claude): accept claude-haiku-5-5 as the Claude Code helper model"
+  layer: fix
+  upstream_pr: null
+  drop: "upstream recognises claude-haiku-5-5 (or a model set) in claude_client_detection.go"
+  note: >-
+    2026-10-07. Claude Code 2.1.293 made Claude Haiku 5.5 the default Haiku,
+    so its markerless helper calls (title, summary, classifier) now carry
+    model=claude-haiku-5-5 while older binaries still send
+    claude-haiku-4-5-20251001. The measured helper profile keyed on the single
+    4.5 id; a 5.5 helper would have fallen out of the helper exception and into
+    the cloaked path. Both ids are accepted; the beta-profile allowlist is
+    unchanged until a 2.1.293 helper capture is reviewed.
+
 # ----------------------------------------------------------- locked build ---
 
 - prefixes:
