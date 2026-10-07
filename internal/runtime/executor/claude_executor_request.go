@@ -236,9 +236,17 @@ func claudeCodeCLIBetas(body []byte, requested map[string]bool, oauthToken bool)
 		betas = append(betas, claudeEffortBeta)
 	}
 	isProbeOrHelper := helps.IsClaudeProbeOrHelperRequest(body)
+	// Each fallback beta stands for itself: 06-01 (array form) when requested
+	// or when the body carries fallbacks, 07-01 (category form) when requested.
+	// Under no-substitution.strip-fallbacks neither is added once the body has
+	// no fallbacks, so the upstream never sees a fallback contract.
 	hasFallbacks := gjson.GetBytes(body, "fallbacks").Exists()
-	if !isProbeOrHelper && (hasFallbacks || ((requested[claudeServerSideFallbackBeta] || requested[claudeServerSideFallbackCategoryBeta]) && !StripFallbacks())) {
+	emitFallbackBetas := hasFallbacks || !StripFallbacks()
+	if !isProbeOrHelper && emitFallbackBetas && (hasFallbacks || requested[claudeServerSideFallbackBeta]) {
 		betas = append(betas, claudeServerSideFallbackBeta)
+	}
+	if !isProbeOrHelper && emitFallbackBetas && requested[claudeServerSideFallbackCategoryBeta] {
+		betas = append(betas, claudeServerSideFallbackCategoryBeta)
 	}
 	shouldIncludeFallbackCredit := requested[claudeFallbackCreditBeta] ||
 		gjson.GetBytes(body, "fallback_credit_token").Exists() ||
@@ -247,7 +255,7 @@ func claudeCodeCLIBetas(body []byte, requested map[string]bool, oauthToken bool)
 		betas = append(betas, claudeFallbackCreditBeta)
 	}
 	for _, beta := range claudeCodeTrailingBetas {
-		if beta == claudeServerSideFallbackBeta || beta == claudeFallbackCreditBeta {
+		if beta == claudeServerSideFallbackBeta || beta == claudeServerSideFallbackCategoryBeta || beta == claudeFallbackCreditBeta {
 			continue
 		}
 		if requested[beta] {

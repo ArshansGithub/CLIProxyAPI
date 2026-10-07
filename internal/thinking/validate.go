@@ -131,7 +131,9 @@ func ValidateConfig(config ThinkingConfig, modelInfo *registry.ModelInfo, fromFo
 
 	if len(support.Levels) > 0 && config.Mode == ModeLevel {
 		if !isLevelSupported(string(config.Level), support.Levels) {
-			if allowClampUnsupported && RefuseUnsupportedEffort() {
+			// Refuse only a true cross-family entry; the same-wire model-family
+			// clamp (Kimi behind the Claude wire) is a kept conversion.
+			if allowClampUnsupported && RefuseUnsupportedEffort() && !isSameProviderFamily(fromFormat, toFormat) {
 				return nil, refuseEffort(toFormat, modelInfo.ID, strings.ToLower(string(config.Level)), normalizeLevels(support.Levels))
 			}
 			if allowClampUnsupported {
