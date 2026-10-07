@@ -76,9 +76,16 @@ const (
 	claudeCodeHelperShapeMinimal
 	claudeCodeHelperShapeStructured
 	claudeCodeHelperShapeTitle280
-
-	claudeCodeHelperModel = "claude-haiku-4-5-20251001"
 )
+
+// claudeCodeHelperModels are the Haiku ids Claude Code uses for its markerless
+// helper calls: claude-haiku-4-5-20251001 up to 2.1.292, and claude-haiku-5-5
+// from 2.1.293 (released 2026-10-07), which made Haiku 5.5 the default Haiku.
+// Both stay accepted because an older binary keeps sending the dated 4.5 id.
+var claudeCodeHelperModels = map[string]bool{
+	"claude-haiku-4-5-20251001": true,
+	"claude-haiku-5-5":          true,
+}
 
 // These are the exact beta sequences observed on markerless native Haiku
 // helper requests. The first six are Claude Code 2.1.220. The last is the
@@ -344,7 +351,7 @@ func measuredClaudeCodeHelperBodyShape(payload []byte) claudeCodeHelperShape {
 	}
 
 	maxTokens := gjson.GetBytes(payload, "max_tokens")
-	if gjson.GetBytes(payload, "model").String() != claudeCodeHelperModel ||
+	if !claudeCodeHelperModels[gjson.GetBytes(payload, "model").String()] ||
 		maxTokens.Type != gjson.Number {
 		return claudeCodeHelperShapeNone
 	}
