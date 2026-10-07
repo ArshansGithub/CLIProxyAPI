@@ -250,6 +250,7 @@ func (s *Service) applyConfigRuntime(ctx context.Context, commit configCommit, s
 	s.applyCacheKeepaliveConfig(cfg)
 	s.applyCacheStatsConfig(cfg)
 	s.applyEffortPinConfig(cfg)
+	s.applyNoSubstitutionConfig(cfg)
 	return ctx.Err() == nil
 }
 
