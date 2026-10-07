@@ -135,10 +135,21 @@ func stripConfigurationUpdatesLoggedDoc(doc *ojson.Doc, docValid bool, provider,
 		droppedEffort = string(LevelAuto)
 	}
 	baseline := extractCodexConfigFromGetter(doc.Get)
-	if RefuseUnsupportedEffort() && !strings.EqualFold(droppedEffort, string(baseline.Level)) {
+	baselineEffort := string(baseline.Level)
+	switch baseline.Mode {
+	case ModeNone:
+		baselineEffort = string(LevelNone)
+	case ModeAuto:
+		baselineEffort = string(LevelAuto)
+	}
+	if RefuseUnsupportedEffort() && !strings.EqualFold(droppedEffort, baselineEffort) {
 		// The model cannot change effort mid-turn, so the only effort it can
 		// honour is the top-level baseline; that is what it "offers" here.
-		return true, refuseEffort(provider, model, droppedEffort, []string{string(baseline.Level)})
+		offers := []string{baselineEffort}
+		if baselineEffort == "" {
+			offers = []string{"only the top-level reasoning.effort, which is unset"}
+		}
+		return true, refuseEffort(provider, model, droppedEffort, offers)
 	}
 	log.WithFields(log.Fields{
 		"provider":       provider,
