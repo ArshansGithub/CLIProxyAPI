@@ -107,6 +107,10 @@ type Config struct {
 	// the effort-suffixed slug (fork-only; see EffortPinConfig).
 	EffortPin EffortPinConfig `yaml:"effort-pin" json:"effort-pin"`
 
+	// NoSubstitution makes model and effort substitution loud (fork-only; see
+	// NoSubstitutionConfig).
+	NoSubstitution NoSubstitutionConfig `yaml:"no-substitution" json:"no-substitution"`
+
 	// Routing controls credential selection behavior.
 	Routing RoutingConfig `yaml:"routing" json:"routing"`
 
