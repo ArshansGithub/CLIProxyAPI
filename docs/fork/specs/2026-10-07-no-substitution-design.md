@@ -153,10 +153,13 @@ each upstream site gets one hook call.
 - Keepalive probes are built from the observed client body (`keepalive.go` `ProbeBody`)
   and run on the same executor path, so they are stripped the same way; their header stays
   the one the warmed request sent.
-- Log line: when the strip removes a key from a confirmed native client, Warn
-  (`no-substitution: fallbacks stripped | model= session= shape=array|default`), because
-  with Part 1 live a native request carrying `fallbacks` means the env switch failed. On a
-  cloaked or translated request, Debug. No once-per-session set; the Warn is the signal.
+- Log line: when the strip removes a key from a confirmed native client, Warn once per
+  session key (`no-substitution: fallbacks stripped | model= session= shape=array|default`),
+  because with Part 1 live a native request carrying `fallbacks` means the env switch
+  failed; later strips in the same session log at Debug. The seen set is a bounded LRU of
+  about 1k session keys, since sessions started before Part 1 keep their old environment
+  and would otherwise Warn on every Opus 5.5 and Fable request until restarted. On a
+  cloaked or translated request, Debug.
 
 `refuse-unsupported-effort` (`internal/thinking`):
 - Refuse only where the caller named a level and the proxy would silently change it: the
@@ -226,15 +229,20 @@ accepted again.
 Each proof has a control so a vacuous pass is visible.
 
 1. Effort resolution. A `cca -p` session at `--settings '{"effortLevel":"low"}'`,
-   `CLAUDE_CODE_EFFORT_LEVEL` unset, spawns three pages named and unnamed: a bare-id page
-   with `effort: high` (transcripts `effort=high`), a bare-id page with no `effort:` line
-   (transcript carries the modelSettings row, medium), and the same with the pin confirmed
-   off (no `effort-pin` refusal, no `rewritten by model suffix` line).
+   `CLAUDE_CODE_EFFORT_LEVEL` unset, spawns a bare-id page with `effort: high` named and
+   unnamed (transcripts `effort=high`; no `effort-pin` refusal, no `rewritten by model
+   suffix` line, pin confirmed off). A bare-id page with no `effort:` line runs in a second
+   session without `--settings` and its transcript shows the modelSettings row (medium);
+   under `--settings low` it shows low, which records that a top-level flag effort beats
+   the row.
 2. Fallback strip. Through the side rig's fake upstream (`.ceeya/sittings/2026-09-29-proxy-
-   effort-slugs/`, :8398), on `/v1/messages` with a native Opus 5.5 body: run A with the
-   Part 1 switches off and `strip-fallbacks` on (ingress carries `fallbacks`, the capture
-   does not, the Warn line fires); run B with `strip-fallbacks` off (the capture carries
-   it); run C with the switches on (ingress carries no `fallbacks`; no Warn). The cloaked
+   effort-slugs/`, :8398), on `/v1/messages`: run A is a real `cca -p` session on Opus 5.5
+   with the Part 1 switches off and `strip-fallbacks` on (ingress carries `fallbacks`, the
+   capture does not, the Warn line fires; if the ingress body carries no `fallbacks`
+   because Claude Code does not arm them behind a third-party base URL, replay the
+   captured native request with its original headers, and the Warn check holds only if the
+   request was classed native in the log); run B with `strip-fallbacks` off (the capture
+   carries it); run C with the switches on (ingress carries no `fallbacks`; no Warn). The cloaked
    injection sites are dormant live (`disable-claude-cloak-mode: true`) and are covered by
    the unit tests only.
 3. Effort refusal. `/v1/messages`, `thinking.type: adaptive`, `output_config.effort:
@@ -249,7 +257,12 @@ Each proof has a control so a vacuous pass is visible.
 
 ## Rollback
 
-Part 1 is file edits with the previous values named here; `CLAUDE_CODE_NO_MODEL_FALLBACK`
-alone can be removed if proof 5 or a live compaction fails, the other switches stay. Part 2
+Part 1 is file edits; the previous values are: `cca` Opus default
+`scoped/claude-opus-5-5-medium[1m]`, Sonnet default `scoped/claude-sonnet-5-5-medium[1m]`,
+Haiku default (in `cca` and in `settings.json` env) `gpt-6-luna-low`; `luna.md`
+`gpt-6-luna-high`; `sol.md` `gpt-6.1-sol-high`; `codebase-refactor-architect.md`
+`claude-opus-5-5-high[1m]`; `effort-pin.enabled: true`; the four env switches absent.
+`CLAUDE_CODE_NO_MODEL_FALLBACK` alone can be removed if proof 5 or a live compaction
+fails, the other switches stay. Part 2
 is a config block: both keys false restores today's behaviour on the next reload without a
 reinstall; the pin can be re-enabled the same way.
