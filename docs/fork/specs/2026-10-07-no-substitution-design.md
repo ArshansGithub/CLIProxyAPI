@@ -266,3 +266,33 @@ Haiku default (in `cca` and in `settings.json` env) `gpt-6-luna-low`; `luna.md`
 fails, the other switches stay. Part 2
 is a config block: both keys false restores today's behaviour on the next reload without a
 reinstall; the pin can be re-enabled the same way.
+
+## Outcome (2026-10-07)
+
+Built as fork commits cd26869..f6be4342 (plan `docs/fork/plans/2026-10-07-no-substitution.md`),
+reviewed whole-branch by an Opus 5.5 lane (three Important findings fixed in 1c417798: the
+07-01 beta is emitted for itself with the switch off, the same-wire Kimi family clamp stays
+a conversion, and a configuration_update baseline of `none` or unset is compared and named
+correctly), installed as v8.0.3-locked.5 at 15:05 with the `no-substitution` block added to
+the live config after the binary ran (`switches applied | strip_fallbacks=true
+refuse_unsupported_effort=true` at 15:05:13).
+
+Proofs: 1 passed live before the install (bare pages, session low, named and unnamed spawns
+`effort=high`; a page without `effort:` ran medium); 2 passed on the side instance by replay
+(2.1.293 itself sends no `fallbacks` behind a custom base URL; the replayed native request was
+stripped with the Warn and its header untouched); 3 passed on the side instance and live
+(`400 effort_unsupported: model gpt-6.1-sol does not offer effort "ultra"; ...`, Error line at
+15:05:18); 4 not reproducible through the rig (no cross-model client fallback armed; the
+refusal surfaced as an error either way); 5 pending (an interactive `/compact` on a `cca`
+Fable session with the switches set; if it reports "Compaction unavailable", remove
+`CLAUDE_CODE_NO_MODEL_FALLBACK` from `settings.json` env alone). The haiku tier moved to
+`claude-haiku-5-5` after the install (answered through the proxy at 15:05:40).
+
+Deviations from this spec, kept: the switches are per-package atomics
+(`thinking.SetRefuseUnsupportedEffort`, `executor.SetStripFallbacks`) rather than an
+`internal/runtime/nosubstitution` package; no `config_diff.go` line, the apply hook logs
+`switches applied` on every reload instead; the Kimi family clamp is listed among the kept
+conversions (it already was in the Decisions). Deferred: count_tokens forwards a caller's
+`fallbacks` key unstripped (no substitution can happen there); the strip's log line labels a
+null or object value as `array` and prints a string value verbatim; no ExecuteStream or
+probe-shaped unit test (the stream path has the identical hook line).
