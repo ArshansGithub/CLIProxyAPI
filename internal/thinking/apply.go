@@ -244,7 +244,11 @@ func applyThinking(body, sourceBody []byte, model string, fromFormat string, toF
 	responseTarget := providerFormat == "codex" || providerFormat == "xai"
 	supportsUpdates := modelInfo != nil && modelInfo.SupportConfigurationUpdate
 	if responseTarget && !supportsUpdates {
-		body = stripConfigurationUpdatesLogged(body, providerFormat, baseModel, modelInfo)
+		var errStrip error
+		body, errStrip = stripConfigurationUpdatesLogged(body, providerFormat, baseModel, modelInfo)
+		if errStrip != nil {
+			return body, errStrip
+		}
 	}
 	nativeResponses := responseTarget && isResponsesFormat(fromFormat) && supportsUpdates
 
