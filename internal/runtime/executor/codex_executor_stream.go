@@ -126,7 +126,7 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 		authLabel = auth.Label
 		authType, authValue = auth.AccountInfo()
 	}
-	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{
+	upstreamLog := helps.UpstreamRequestLog{
 		URL:       url,
 		Method:    http.MethodPost,
 		Headers:   httpReq.Header.Clone(),
@@ -136,7 +136,8 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 		AuthLabel: authLabel,
 		AuthType:  authType,
 		AuthValue: authValue,
-	})
+	}
+	helps.RecordAPIRequest(ctx, e.cfg, upstreamLog)
 
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClientRoundTripOnly(httpClient)
@@ -228,6 +229,11 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 	}
 
 	sawOutputDelta := false
+	// forwardedGenerated records whether any frame outside the bootstrap classifier's handshake
+	// list has reached the client. Until it flips, a stream that ends before its terminal event
+	// can be re-issued transparently (see codex.stream-incomplete-retries); after it, two
+	// generations could not be spliced, so the end is surfaced as before.
+	forwardedGenerated := false
 	if buffering {
 		for scanner.Scan() {
 			line := scanner.Bytes()
@@ -354,6 +360,7 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 
 			initialChunks = chunks
 			streamStarted = true
+			forwardedGenerated = !isHandshake
 			if terminalSuccess {
 				immediateTerminal = true
 			}
@@ -429,109 +436,188 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 			emittedCount++
 		}
 	}
+	retryBudget := 0
+	if e.cfg != nil {
+		retryBudget = e.cfg.Codex.StreamIncompleteRetryBudget()
+	}
+	reissuer := &codexStreamReissuer{template: httpReq, body: upstreamBody, client: httpClient, log: upstreamLog}
+
 	go func() {
 		defer close(out)
+		currentBody := httpResp.Body
 		defer func() {
-			if errClose := httpResp.Body.Close(); errClose != nil {
+			if errClose := currentBody.Close(); errClose != nil {
 				log.Errorf("codex executor: close response body error: %v", errClose)
 			}
 		}()
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			var translatedLine []byte
-			terminalSuccess := false
-			isIncompleteEvent := false
+		retryAttempt := 0
+		// suppressHandshake is set on a re-issued attempt: the client already holds the first
+		// attempt's handshake, so this attempt's handshake frames are consumed silently until its
+		// first generated frame. heldPrefix keeps that frame's own non-data lines (its event: line)
+		// so the released frame is forwarded whole.
+		suppressHandshake := false
+		var heldPrefix [][]byte
+		for {
+			for scanner.Scan() {
+				line := scanner.Bytes()
+				var translatedLine []byte
+				terminalSuccess := false
+				isIncompleteEvent := false
+				var releasedPrefix [][]byte
 
-			if transformed, ok := grokbuild.TransformKeepaliveSSELine(line, isGrokClient); ok {
-				translatedLine = transformed
-			} else if bytes.HasPrefix(line, dataTag) {
-				data := bytes.TrimSpace(line[5:])
-				data = helps.RestoreCodexMultiAgentV2Response(data, optimizeMultiAgentV2)
-				observeCodexTokenEvent(reporter, data)
-				translatedLine = append([]byte("data: "), data...)
-				eventType := ojson.GetBytesNoCopy(data, "type").String()
-				if streamErr, terminalBody, ok := codexTerminalFailureErrWithCooling(data, e.modelLevelCooling()); ok {
-					if errClearReplay := clearCodexReasoningReplayOnInvalidSignature(ctx, replayScope, streamErr.StatusCode(), terminalBody); errClearReplay != nil {
-						helps.RecordAPIResponseError(ctx, e.cfg, errClearReplay)
-						reporter.PublishFailure(ctx, errClearReplay)
+				if transformed, ok := grokbuild.TransformKeepaliveSSELine(line, isGrokClient); ok {
+					if suppressHandshake {
+						heldPrefix = nil
+						continue
+					}
+					translatedLine = transformed
+				} else if bytes.HasPrefix(line, dataTag) {
+					data := bytes.TrimSpace(line[5:])
+					data = helps.RestoreCodexMultiAgentV2Response(data, optimizeMultiAgentV2)
+					observeCodexTokenEvent(reporter, data)
+					translatedLine = append([]byte("data: "), data...)
+					eventType := ojson.GetBytesNoCopy(data, "type").String()
+					handshakeFrame := isCodexBootstrapBufferableEvent(eventType, data)
+					if suppressHandshake {
+						if handshakeFrame {
+							heldPrefix = nil
+							continue
+						}
+						suppressHandshake = false
+						releasedPrefix = heldPrefix
+						heldPrefix = nil
+					}
+					if !handshakeFrame {
+						forwardedGenerated = true
+					}
+					if streamErr, terminalBody, ok := codexTerminalFailureErrWithCooling(data, e.modelLevelCooling()); ok {
+						if errClearReplay := clearCodexReasoningReplayOnInvalidSignature(ctx, replayScope, streamErr.StatusCode(), terminalBody); errClearReplay != nil {
+							helps.RecordAPIResponseError(ctx, e.cfg, errClearReplay)
+							reporter.PublishFailure(ctx, errClearReplay)
+							select {
+							case out <- cliproxyexecutor.StreamChunk{Err: errClearReplay}:
+							case <-ctx.Done():
+							}
+							return
+						}
+						helps.RecordAPIResponseError(ctx, e.cfg, streamErr)
+						reporter.PublishFailure(ctx, streamErr)
 						select {
-						case out <- cliproxyexecutor.StreamChunk{Err: errClearReplay}:
+						case out <- cliproxyexecutor.StreamChunk{Err: streamErr}:
 						case <-ctx.Done():
 						}
 						return
 					}
-					helps.RecordAPIResponseError(ctx, e.cfg, streamErr)
-					reporter.PublishFailure(ctx, streamErr)
-					select {
-					case out <- cliproxyexecutor.StreamChunk{Err: streamErr}:
-					case <-ctx.Done():
+					if helps.HasMeaningfulCodexOutputDelta(data) {
+						sawOutputDelta = true
 					}
-					return
+					if codexTerminalEmptyIncompleteForCaller(opts.Headers, data, len(outputItemsByIndex)+len(outputItemsFallback), sawOutputDelta) {
+						streamErr := newCodexEmptyIncompleteStreamError()
+						helps.RecordAPIResponseError(ctx, e.cfg, streamErr)
+						reporter.PublishFailure(ctx, streamErr)
+						select {
+						case out <- cliproxyexecutor.StreamChunk{Err: streamErr}:
+						case <-ctx.Done():
+						}
+						return
+					}
+					switch eventType {
+					case "response.output_item.done":
+						collectCodexOutputItemDone(data, outputItemsByIndex, &outputItemsFallback)
+					case "response.completed", "response.incomplete", "response.done":
+						terminalSuccess = true
+						isIncompleteEvent = eventType == "response.incomplete"
+						data = normalizeCodexWebsocketCompletion(data)
+						if detail, ok := helps.ParseCodexUsageWithOutputItems(data, outputItemsByIndex, outputItemsFallback); ok {
+							reporter.Publish(ctx, detail)
+						} else {
+							reporter.EnsurePublished(ctx)
+						}
+						publishCodexImageToolUsageWithOutputItems(ctx, reporter, body, data, outputItemsByIndex, outputItemsFallback)
+						if !preserveNativeOutput {
+							data = patchCodexCompletedOutput(data, outputItemsByIndex, outputItemsFallback)
+						}
+						if eventType == "response.completed" || eventType == "response.done" {
+							cacheCodexReasoningReplayFromCompleted(replayScope, data)
+						}
+						translatedLine = append([]byte("data: "), data...)
+					}
+				} else {
+					if suppressHandshake {
+						if len(bytes.TrimSpace(line)) == 0 {
+							heldPrefix = nil
+						} else {
+							heldPrefix = append(heldPrefix, bytes.Clone(line))
+						}
+						continue
+					}
+					translatedLine = bytes.Clone(line)
 				}
-				if helps.HasMeaningfulCodexOutputDelta(data) {
-					sawOutputDelta = true
-				}
-				if codexTerminalEmptyIncompleteForCaller(opts.Headers, data, len(outputItemsByIndex)+len(outputItemsFallback), sawOutputDelta) {
-					streamErr := newCodexEmptyIncompleteStreamError()
-					helps.RecordAPIResponseError(ctx, e.cfg, streamErr)
-					reporter.PublishFailure(ctx, streamErr)
-					select {
-					case out <- cliproxyexecutor.StreamChunk{Err: streamErr}:
-					case <-ctx.Done():
-					}
-					return
-				}
-				switch eventType {
-				case "response.output_item.done":
-					collectCodexOutputItemDone(data, outputItemsByIndex, &outputItemsFallback)
-				case "response.completed", "response.incomplete", "response.done":
-					terminalSuccess = true
-					isIncompleteEvent = eventType == "response.incomplete"
-					data = normalizeCodexWebsocketCompletion(data)
-					if detail, ok := helps.ParseCodexUsageWithOutputItems(data, outputItemsByIndex, outputItemsFallback); ok {
-						reporter.Publish(ctx, detail)
-					} else {
-						reporter.EnsurePublished(ctx)
-					}
-					publishCodexImageToolUsageWithOutputItems(ctx, reporter, body, data, outputItemsByIndex, outputItemsFallback)
-					if !preserveNativeOutput {
-						data = patchCodexCompletedOutput(data, outputItemsByIndex, outputItemsFallback)
-					}
-					if eventType == "response.completed" || eventType == "response.done" {
-						cacheCodexReasoningReplayFromCompleted(replayScope, data)
-					}
-					translatedLine = append([]byte("data: "), data...)
-				}
-			} else {
-				translatedLine = bytes.Clone(line)
-			}
 
-			chunks := helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, originalPayload, body, translatedLine, &param, claudeInputTokens)
-			for i := range chunks {
-				select {
-				case out <- cliproxyexecutor.StreamChunk{Payload: chunks[i], Incomplete: isIncompleteEvent}:
-					if len(chunks[i]) > 0 {
-						emittedCount++
+				var chunks [][]byte
+				for _, held := range releasedPrefix {
+					chunks = append(chunks, helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, originalPayload, body, held, &param, claudeInputTokens)...)
+				}
+				chunks = append(chunks, helps.TranslateStreamWithClaudeInputTokens(ctx, to, responseFormat, req.Model, originalPayload, body, translatedLine, &param, claudeInputTokens)...)
+				for i := range chunks {
+					select {
+					case out <- cliproxyexecutor.StreamChunk{Payload: chunks[i], Incomplete: isIncompleteEvent}:
+						if len(chunks[i]) > 0 {
+							emittedCount++
+						}
+					case <-ctx.Done():
+						return
 					}
-				case <-ctx.Done():
+				}
+				if terminalSuccess {
+					if isIncompleteEvent && len(chunks) == 0 {
+						select {
+						case out <- cliproxyexecutor.StreamChunk{Incomplete: true}:
+						case <-ctx.Done():
+						}
+					}
 					return
 				}
 			}
-			if terminalSuccess {
-				if isIncompleteEvent && len(chunks) == 0 {
-					select {
-					case out <- cliproxyexecutor.StreamChunk{Incomplete: true}:
-					case <-ctx.Done():
-					}
+			errScan := scanner.Err()
+			if errScan != nil && ctx.Err() != nil {
+				return
+			}
+			if !forwardedGenerated && retryAttempt < retryBudget && ctx.Err() == nil {
+				retryAttempt++
+				cause := "ended before a terminal event"
+				if errScan != nil {
+					helps.RecordAPIResponseError(ctx, e.cfg, errScan)
+					cause = "failed before a terminal event (" + errScan.Error() + ")"
 				}
-				return
+				helps.LogWithRequestID(ctx).Warnf("codex executor: upstream stream %s with nothing generated; retrying %d/%d on the same credential", cause, retryAttempt, retryBudget)
+				if !waitCodexIncompleteRetryBackoff(ctx, retryAttempt) {
+					return
+				}
+				retryResp, errRetry := reissuer.reissue(ctx, e.cfg)
+				if errRetry != nil {
+					if ctx.Err() != nil {
+						return
+					}
+					helps.LogWithRequestID(ctx).Warnf("codex executor: stream retry %d/%d could not be issued: %v", retryAttempt, retryBudget, errRetry)
+					break
+				}
+				if errClose := currentBody.Close(); errClose != nil {
+					log.Errorf("codex executor: close response body error: %v", errClose)
+				}
+				currentBody = retryResp.Body
+				scanner = helps.NewCodexSSEScanner(ctx, currentBody, 52_428_800) // 50MB
+				scanner.SetOnLine(func(rawLine []byte) {
+					helps.AppendAPIResponseChunk(ctx, e.cfg, rawLine)
+				})
+				suppressHandshake = true
+				heldPrefix = nil
+				continue
 			}
-		}
-		if errScan := scanner.Err(); errScan != nil {
-			if ctx.Err() != nil {
-				return
+			if errScan != nil {
+				helps.RecordAPIResponseError(ctx, e.cfg, errScan)
 			}
-			helps.RecordAPIResponseError(ctx, e.cfg, errScan)
+			break
 		}
 		if emittedCount == 0 {
 			emptyErr := statusErr{code: http.StatusBadGateway, msg: "upstream stream closed before first payload"}

@@ -311,6 +311,17 @@ type CodexConfig struct {
 	// When set (e.g. "20s"), the stream is released once the time ceiling is reached, avoiding
 	// reverse-proxy timeouts (e.g. Nginx 60s proxy_read_timeout).
 	StreamBootstrapTimeout string `yaml:"stream-bootstrap-timeout,omitempty" json:"stream-bootstrap-timeout,omitempty"`
+	// StreamIncompleteRetries (fork) is how many times the SSE executor re-sends a request whose
+	// upstream stream ended, cleanly or by a transport error, before a terminal event while nothing
+	// generated had yet been forwarded to the client: only the handshake, keepalives and empty item
+	// announcements the bootstrap classifier recognises. The retry goes to the same credential with
+	// the same body, its handshake is swallowed so the client sees one message, and a drop after a
+	// generated event is never retried because two generations cannot be spliced. This is the
+	// recovery Codex CLI itself performs (stream_max_retries, default 5) and the proxy had no
+	// equivalent for, so a downstream that cannot retry mid-stream, such as Claude Code, saw a
+	// 408 "stream closed before response.completed" instead. 0 (the default) keeps upstream
+	// behaviour; values above 5 are clamped.
+	StreamIncompleteRetries int `yaml:"stream-incomplete-retries,omitempty" json:"stream-incomplete-retries,omitempty"`
 	// OrphanDelegationCompatibility enables opt-in compatibility for orphan Codex delegation outputs.
 	OrphanDelegationCompatibility bool `yaml:"orphan-delegation-compatibility" json:"orphan-delegation-compatibility"`
 	// ModelLevelCooling scopes Codex usage_limit_reached quota cooldowns to the requested model
@@ -351,6 +362,21 @@ func (c CodexConfig) EffectiveSignInWithChatGPTIdentifier() string {
 		return v
 	}
 	return DefaultSignInWithChatGPTIdentifier
+}
+
+// MaxCodexStreamIncompleteRetries caps codex.stream-incomplete-retries.
+const MaxCodexStreamIncompleteRetries = 5
+
+// StreamIncompleteRetryBudget returns the configured incomplete-stream retry count, clamped to
+// [0, MaxCodexStreamIncompleteRetries].
+func (c *CodexConfig) StreamIncompleteRetryBudget() int {
+	if c == nil || c.StreamIncompleteRetries <= 0 {
+		return 0
+	}
+	if c.StreamIncompleteRetries > MaxCodexStreamIncompleteRetries {
+		return MaxCodexStreamIncompleteRetries
+	}
+	return c.StreamIncompleteRetries
 }
 
 // DefaultCodexStreamBootstrapTimeout is the default maximum duration to buffer bootstrap events.
