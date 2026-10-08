@@ -906,6 +906,15 @@ oauth:
       # is applied, and buffering relies purely on the 48-frame and 1MB byte budget.
       # Default: "0" (unlimited)
       stream-bootstrap-timeout: "0"
+      # (fork) How many times to re-send a request whose upstream SSE stream ended before a terminal
+      # event while nothing generated had been forwarded yet (only response.created / in_progress,
+      # keepalives and empty item announcements). The retry uses the same credential and body, its
+      # handshake is swallowed so the client still sees one message, and the backoff is 1s per attempt.
+      # A drop after a generated event (reasoning, text or a tool call) is never retried. This mirrors
+      # Codex CLI's own stream_max_retries (default 5) for clients that cannot retry mid-stream, such as
+      # Claude Code, which otherwise surface "stream closed before response.completed".
+      # Default: 0 (off). Values above 5 are clamped.
+      stream-incomplete-retries: 0
       # When true, optimize Codex Desktop, codex-tui, and codex_cli_rs requests for multi-agent v2.
       # This refreshes Codex spawn_agent model details, removes message parameter encryption,
       # normalizes encrypted agent_message content for Codex, and converts agent_message input
