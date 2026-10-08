@@ -1288,6 +1288,16 @@ oauth:
       # Identifier (agent_name_hint and User-Agent prefix) for Sign in with ChatGPT (SIWC) OAuth and API requests.
       signin-with-chatgpt-identifier: "CLIProxyAPI"
 
+      # (fork) How many times to re-send a request whose upstream SSE stream ended before a terminal
+      # event while nothing generated had been forwarded yet (only response.created / in_progress,
+      # keepalives and empty item announcements). The retry uses the same credential and body, its
+      # handshake is swallowed so the client still sees one message, and the backoff is 1s per attempt.
+      # A drop after a generated event (reasoning, text or a tool call) is never retried. This mirrors
+      # Codex CLI's own stream_max_retries (default 5) for clients that cannot retry mid-stream, such as
+      # Claude Code, which otherwise surface "stream closed before response.completed".
+      # Default: 0 (off). Values above 5 are clamped.
+      stream-incomplete-retries: 0
+
       # Default headers for Codex OAuth model requests.
       # These are used only for file-backed/OAuth Codex requests when the client
       # does not send the header. `user-agent` applies to HTTP and websocket requests;
