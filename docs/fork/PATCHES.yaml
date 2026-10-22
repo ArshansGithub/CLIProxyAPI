@@ -167,13 +167,6 @@
 
 # ------------------------------------------------ standalone fork commits ----
 
-- subjects:
-    - "fix(executor): normalize bare-string Claude message content to block form"
-    - 'Revert "fix(executor): normalize bare-string Claude message content to block form"'
-  layer: fix
-  upstream_pr: null
-  drop: "both commits cancel; drop together on next rebase"
-
 - subject: "auth: retry the same credential on upstream 529 before failing over"
   layer: feat
   upstream_pr: null
@@ -191,18 +184,30 @@
   layer: fix
   upstream_pr: null
   drop: "upstream stops rewriting the wire of a confirmed native Claude Code client"
-  note: "Re-asserts this fork's passthrough contract against upstream 2.1.258 reshaping."
+  note: >-
+    Re-asserts this fork's passthrough contract against upstream 2.1.258 reshaping.
+    v8.0.38: the confirmed-client early return sits before upstream's uncloak
+    beta strip (084b9ca7) and operator beta overrides (9db0729f), and keeps the
+    binding beta when the native body carries thinking.block_binding; upstream's
+    automatic block binding (911f49cb) skips a confirmed client (reconcile commit).
 
 - subject: "codex: pass a caller's own Codex identity through instead of cloaking it"
   layer: fix
   upstream_pr: null
   drop: "upstream stops forcing its built-in codex-tui identity onto a real Codex CLI"
 
-- subject: "codex: keep native Codex requests unreshaped after the v7.2.154 merge"
+- subjects:
+    - "codex: keep native Codex requests unreshaped after the v7.2.154 merge"
+    - "fix: restore the upstream websocket tests the native-Codex commit deleted"
   layer: fix
   upstream_pr: null
   drop: "re-evaluate at each rebase; the guard tracks upstream's Codex reshaping"
-  note: "Companion to the Codex identity passthrough, for reshaping added in v7.2.154."
+  note: >-
+    Companion to the Codex identity passthrough, for reshaping added in v7.2.154.
+    v8.0.38 adds one more guarded site: the web_search history reconciliation
+    (e7d4c731) returns early for a caller presenting a Codex identity
+    (reconcile commit). The first commit also deleted eleven upstream
+    websocket tests; the second restores them (v8.0.38).
 
 - subjects:
     - "docs: build-from-source section for the cache-tooling branch"
@@ -216,7 +221,9 @@
   upstream_pr: null
   drop: "fold into #5444's test the next time that patch is rewritten"
 
-- subject: "fix: reconcile carried patches with v7.2.159's equivalents"
+- subjects:
+    - "fix: reconcile carried patches with v7.2.159's equivalents"
+    - "fix: reconcile carried patches with v8.0.38's equivalents"
   layer: fix
   upstream_pr: null
   drop: >-
@@ -228,14 +235,17 @@
     CAIS block-kind reconciliation in internal/signature, the cache-stats stream
     test moved onto MergeStreamUsageDetail, and the prewarm regression test
     moved onto upstream's normalizeResponsesWebsocketPrewarmFollowup.
+    The v8.0.38 commit: the #5338 pick's resolveCompatConfig call, the
+    no-substitution strip moved after upstream's relocated payload rules, the
+    block-binding and web_search passthrough guards, fork config sections not
+    written back when they hold only defaults, and the antigravity slug test.
 
 - subject: "fix(thinking): never rewrite a requested effort silently"
   layer: fix
   upstream_pr: null
   drop: >-
     upstream logs level clamps and high-intent remaps above Debug, warns when
-    it strips configuration_update items, honours a bare output_config.effort
-    in the Claude->Codex translator, and orders "ultra" above "max"
+    it strips configuration_update items, and orders "ultra" above "max"
   note: >-
     Four places rewrote or dropped a caller's effort with nothing visible at
     the default Info log level: clampLevel logged at Debug, the cross-family
@@ -245,6 +255,9 @@
     model, the requested effort and the applied one, or forwards the effort.
     LevelUltra joins standardLevelOrder above max so a request for "ultra" on
     a model without it clamps to max instead of failing validation.
+    v8.0.38: the Claude->Codex translator hunk is dropped; upstream 009f8d7a
+    honours a bare output_config.effort itself, and this patch's test for it
+    still passes against upstream's code. The other three sites are carried.
 
 - subject: "feat(thinking): effort-suffixed model slugs pin the upstream effort"
   layer: feat
