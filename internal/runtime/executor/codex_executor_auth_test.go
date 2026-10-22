@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"github.com/MoeForge/moego/base64"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"io"
 	"net"
 	"net/http"
@@ -106,6 +107,10 @@ func startCodexMockOAuthServers(t *testing.T, idToken string) (proxyURL string, 
 }
 
 func TestCodexExecutorRefresh_MissingPlanTypeDefaultsToFree(t *testing.T) {
+	// The request reaches a registered provider host through a loopback fake;
+	// the egress gate checks the destination, so install the built-in provider
+	// hosts (a bare test process allows loopback only).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	idTokenWithoutPlan := makeTestCodexRefreshJWT("", "acc-codex-test")
 	proxyURL, teardown := startCodexMockOAuthServers(t, idTokenWithoutPlan)
 	defer teardown()
@@ -182,6 +187,10 @@ func TestCodexExecutorRefresh_MissingPlanTypeDefaultsToFree(t *testing.T) {
 }
 
 func TestCodexExecutorRefresh_ExtractsPlanTypeWhenPresent(t *testing.T) {
+	// The request reaches a registered provider host through a loopback fake;
+	// the egress gate checks the destination, so install the built-in provider
+	// hosts (a bare test process allows loopback only).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	idTokenWithPlan := makeTestCodexRefreshJWT("team", "acc-codex-test-team")
 	proxyURL, teardown := startCodexMockOAuthServers(t, idTokenWithPlan)
 	defer teardown()
@@ -258,6 +267,10 @@ func TestCodexExecutorRefresh_ExtractsPlanTypeWhenPresent(t *testing.T) {
 }
 
 func TestCodexExecutorRefresh_EmptyAttributesSnapshotIsolation(t *testing.T) {
+	// The request reaches a registered provider host through a loopback fake;
+	// the egress gate checks the destination, so install the built-in provider
+	// hosts (a bare test process allows loopback only).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	idTokenWithoutPlan := makeTestCodexRefreshJWT("", "acc-codex-empty-attrs")
 	proxyURL, teardown := startCodexMockOAuthServers(t, idTokenWithoutPlan)
 	defer teardown()
@@ -384,6 +397,10 @@ func startDualCodexAndSIWCMockOAuthServer(t *testing.T, idToken string, failSIWC
 }
 
 func TestCodexExecutorRefreshSelectiveAndDual(t *testing.T) {
+	// The request reaches a registered provider host through a loopback fake;
+	// the egress gate checks the destination, so install the built-in provider
+	// hosts (a bare test process allows loopback only).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	idToken := makeTestCodexRefreshJWT("plus", "acc-dual-1")
 	failSIWC := false
 	proxyURL, outerCount, siwcCount, teardown := startDualCodexAndSIWCMockOAuthServer(t, idToken, &failSIWC)
@@ -1081,6 +1098,10 @@ func TestCodexExecutorUseSIWCImageRequestsRouteThroughResponsesSSE(t *testing.T)
 }
 
 func TestCodexExecutorRefreshHomeModeRefreshesSIWCWhenOnlySIWCDue(t *testing.T) {
+	// The request reaches a registered provider host through a loopback fake;
+	// the egress gate checks the destination, so install the built-in provider
+	// hosts (a bare test process allows loopback only).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	idToken := makeTestCodexRefreshJWT("plus", "acc-home-1")
 	failSIWC := false
 	proxyURL, outerCount, siwcCount, teardown := startDualCodexAndSIWCMockOAuthServer(t, idToken, &failSIWC)
@@ -1160,6 +1181,10 @@ func TestCodexExecutorRefreshHomeModeRefreshesSIWCWhenOnlySIWCDue(t *testing.T) 
 }
 
 func TestCodexExecutorRefreshSerializesUnderFileLockAndSkipsAlreadyRotatedToken(t *testing.T) {
+	// The request reaches a registered provider host through a loopback fake;
+	// the egress gate checks the destination, so install the built-in provider
+	// hosts (a bare test process allows loopback only).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	idToken := makeTestCodexRefreshJWT("plus", "acc-lock-1")
 	failSIWC := false
 	proxyURL, outerCount, siwcCount, teardown := startDualCodexAndSIWCMockOAuthServer(t, idToken, &failSIWC)

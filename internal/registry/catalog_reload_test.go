@@ -1,3 +1,8 @@
+//go:build !locked
+
+// Exercises remote and custom catalog sources, which the locked build turns off
+// (catalogUpdater.configure); model_sources_locked_test.go covers that path.
+
 package registry
 
 import (

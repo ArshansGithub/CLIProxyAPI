@@ -4,6 +4,7 @@ github.com                     # plugin store / release feeds; locked build neve
 api.github.com                 # panel and plugin release lookups; compiled out under locked
 raw.githubusercontent.com      # remote model catalog (internal/registry updaters); locked build uses the embedded snapshot
 models.router-for.me           # remote model catalog mirror (internal/registry updaters); same
+registry.npmjs.org             # xAI Grok CLI version poll (internal/runtime/executor/helps/xai_version.go), boot plus every 3h with or without an xAI credential; refused, the built-in fallback version is used
 cpamc.router-for.me            # unverified management-panel fallback host; compiled out under locked
 app.devin.ai                   # Devin OAuth authorize page the user's browser opens (internal/auth/devin); the proxy never fetches it
 antigravity-hub-auto-updater-974169037036.us-central1.run.app  # antigravity version-manifest host; code has a built-in fallback, not a provider API

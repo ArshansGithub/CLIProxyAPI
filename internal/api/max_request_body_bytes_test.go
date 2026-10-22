@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/lockedbuild"
 	"io"
 	"math"
 	"mime/multipart"
@@ -411,6 +412,10 @@ access:
 			{http.MethodPost, "/v8/management/plugins/store/demo/install"},
 			{http.MethodPut, "/v8/management/config"},
 		} {
+			if lockedbuild.Enabled && strings.Contains(endpoint.path, "/plugins/store/") {
+				// The locked build refuses plugin installs with 403 before reading the body.
+				continue
+			}
 			reqMgmt := httptest.NewRequest(endpoint.method, endpoint.path, io.NopCloser(strings.NewReader(`{"version":"`+strings.Repeat("v", 128)+`"}`)))
 			reqMgmt.ContentLength = -1
 			reqMgmt.Header.Set("Authorization", "Bearer mgmt-secret")
