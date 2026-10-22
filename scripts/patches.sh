@@ -63,7 +63,7 @@ PY
       # Fall back to the subject's own conventional-commit prefix when the
       # matched entry carries no layer.
       if [ "$layer" = "?" ]; then
-        layer=$(printf '%s' "$subject" | sed -E 's/^(lock|feat|fix|pick)[:(].*/\1/; t; s/.*/?/')
+        layer=$(printf '%s' "$subject" | sed -E -e 's/^(lock|feat|fix|pick)[:(].*/\1/' -e 't' -e 's/.*/?/')
       fi
       link=""
       [ "$prnum" != "-" ] && link="[#$prnum](https://github.com/router-for-me/CLIProxyAPI/pull/$prnum)"
