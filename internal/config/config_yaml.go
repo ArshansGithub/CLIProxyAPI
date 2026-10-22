@@ -373,6 +373,9 @@ func isKnownDefaultValue(path []string, node *yaml.Node) bool {
 	if isPluginConfigsSubtreePath(path) {
 		return false
 	}
+	if isForkDefaultSection(path, node) {
+		return true
+	}
 	if len(path) == 1 && path[0] == "plugins" && node != nil && node.Kind == yaml.MappingNode {
 		configsIdx := findMapKeyIndex(node, "configs")
 		if configsIdx >= 0 && configsIdx+1 < len(node.Content) {

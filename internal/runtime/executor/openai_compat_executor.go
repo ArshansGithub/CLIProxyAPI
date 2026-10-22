@@ -395,7 +395,7 @@ func (e *OpenAICompatExecutor) executeStreamWithCredentials(ctx context.Context,
 		}
 	}
 
-	if helps.ShouldForceNonStreamToolCalls(e.resolveCompatConfig(auth), translated) {
+	if helps.ShouldForceNonStreamToolCalls(e.resolveCompatConfig(auth, req), translated) {
 		return e.executeStreamViaNonStream(ctx, auth, req, opts, reporter, baseURL, apiKey, to, responseFormat, translated, originalPayload)
 	}
 

@@ -469,6 +469,10 @@ func isCodexWebSearchToolType(toolType string) bool {
 // {"type":"web_search"} tool declaration when missing, while Responses Lite
 // requests (which omit top-level hosted tools) strip the replayed search items.
 func ensureWebSearchToolForHistory(body []byte, headers http.Header) []byte {
+	// Fork: a real Codex client's request is passed through unreshaped.
+	if codexClientPresentsIdentity(headers) {
+		return body
+	}
 	if !bytes.Contains(body, []byte("web_search_call")) {
 		return body
 	}

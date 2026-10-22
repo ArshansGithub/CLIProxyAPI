@@ -155,7 +155,6 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 
 	body = ensureModelMaxTokens(body, baseModel)
-	body = stripFallbacksForUpstream(body, confirmedClaudeCode, stripSessionKey(claudeSessionID, incomingHeaders))
 
 	// Disable thinking if tool_choice forces tool use (Anthropic API constraint)
 	body = disableThinkingIfToolChoiceForced(body)
@@ -243,7 +242,10 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		}
 	}
 	bodyForUpstream = stripDefaultKimiClaudeCodeAttribution(auth, url, fp.ProfileClaudeCodeCLI, bodyForUpstream)
-	bodyForUpstream = applyClaudePreservedThinkingBinding(bodyForUpstream)
+	// A confirmed native client owns its thinking block binding (passthrough).
+	if !confirmedClaudeCode {
+		bodyForUpstream = applyClaudePreservedThinkingBinding(bodyForUpstream)
+	}
 	// User rules match the fully prepared business body and are applied only once.
 	var touchedPayloadPaths map[string]bool
 	bodyForUpstream, touchedPayloadPaths = helps.ApplyPayloadConfigWithTrackedPaths(
@@ -256,6 +258,8 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 	extraBetas, bodyForUpstream = extractAndRemoveBetas(bodyForUpstream)
 	bodyForUpstream = stripPromptCacheOptions(bodyForUpstream)
+	// no-substitution: the finished body, after payload rules and before CCH signing.
+	bodyForUpstream = stripFallbacksForUpstream(bodyForUpstream, confirmedClaudeCode, stripSessionKey(claudeSessionID, incomingHeaders))
 	if cchSigning {
 		bodyForUpstream, err = signAnthropicMessagesBody(bodyForUpstream)
 		if err != nil {

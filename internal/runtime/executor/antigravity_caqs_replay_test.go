@@ -13,6 +13,7 @@ import (
 
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/signature/signaturetest"
 	antigravityclaude "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/antigravity/claude"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -23,6 +24,11 @@ import (
 )
 
 func TestAntigravityExecutorCAQSTwoTurnReplay(t *testing.T) {
+	// The fork's pinned catalog carries no antigravity claude-opus-5-5-high row,
+	// so the effort-suffix slug gate would read "-high" as an effort. A real
+	// account registers the id from its entitlements; register it the same way.
+	registry.GetGlobalRegistry().RegisterClient("test-antigravity-caqs-replay", "antigravity", []*registry.ModelInfo{{ID: "claude-opus-5-5-high", OwnedBy: "antigravity", Type: "antigravity"}})
+	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient("test-antigravity-caqs-replay") })
 	sig := signaturetest.AntigravityCAQS()
 	previousCache, previousStrict := cache.SignatureCacheEnabled(), cache.SignatureBypassStrictMode()
 	t.Cleanup(func() {
