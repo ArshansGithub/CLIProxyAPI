@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 )
 
 func mustDefaultTransport(t *testing.T) *http.Transport {
@@ -84,13 +86,33 @@ func TestBuildHTTPTransportDirectBypassesProxy(t *testing.T) {
 	if transport == nil {
 		t.Fatal("expected transport, got nil")
 	}
-	if transport.Proxy != nil {
-		t.Fatal("expected direct transport to disable proxy function")
+	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
 	}
+	proxyURL, errProxy := transport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected direct transport to select no proxy, got %v", proxyURL)
+	}
+}
+
+// allowProxyTestHost permits the destination these tests hand to the transport's
+// proxy function. Nothing is dialled; the egress gate runs on every request, so
+// the host still has to be permitted.
+func allowProxyTestHost(t *testing.T) {
+	t.Helper()
+	// The proxy host is admitted too: since the egress gate checks the host a
+	// forward proxy socket goes to, a test proxy at proxy.example.com must be
+	// listed like a real one would be via proxy-url or extra-allow.
+	egress.SetConfigWithBuiltin(nil, []string{"example.com", "proxy.example.com"})
 }
 
 func TestBuildHTTPTransportHTTPProxy(t *testing.T) {
 	t.Parallel()
+	allowProxyTestHost(t)
 
 	transport, mode, errBuild := BuildHTTPTransport("http://proxy.example.com:8080")
 	if errBuild != nil {
@@ -141,8 +163,16 @@ func TestBuildHTTPTransportSOCKS5ProxyInheritsDefaultTransportSettings(t *testin
 	if transport == nil {
 		t.Fatal("expected transport, got nil")
 	}
-	if transport.Proxy != nil {
-		t.Fatal("expected SOCKS5 transport to bypass http proxy function")
+	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
+	}
+	proxyURL, errProxy := transport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected SOCKS5 transport to select no http proxy, got %v", proxyURL)
 	}
 
 	defaultTransport := mustDefaultTransport(t)
@@ -170,8 +200,16 @@ func TestBuildHTTPTransportSOCKS5HProxy(t *testing.T) {
 	if transport == nil {
 		t.Fatal("expected transport, got nil")
 	}
-	if transport.Proxy != nil {
-		t.Fatal("expected SOCKS5H transport to bypass http proxy function")
+	req, errReq := http.NewRequest(http.MethodGet, "http://127.0.0.1/", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
+	}
+	proxyURL, errProxy := transport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected SOCKS5H transport to select no http proxy, got %v", proxyURL)
 	}
 	if transport.DialContext == nil {
 		t.Fatal("expected SOCKS5H transport to have custom DialContext")
@@ -180,6 +218,7 @@ func TestBuildHTTPTransportSOCKS5HProxy(t *testing.T) {
 
 func TestBuildHTTPTransportHTTPSProxyInheritsDefaultTransportSettings(t *testing.T) {
 	t.Parallel()
+	allowProxyTestHost(t)
 
 	transport, mode, errBuild := BuildHTTPTransport("https://proxy.example.com:8443")
 	if errBuild != nil {

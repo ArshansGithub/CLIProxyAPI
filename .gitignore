@@ -30,6 +30,7 @@ auths/*
 
 # Documentation
 docs/*
+!docs/management-api-v8.md
 AGENTS.md
 CLAUDE.md
 GEMINI.md
@@ -66,3 +67,17 @@ docker-compose.override.yml
 
 # Local LLM Wiki vault
 .llm-wiki
+
+# Local build output from AGENTS.md build recipes
+cliproxyapi-patched
+
+# fork: tracked documentation for the locked build (spec, patches, audits)
+!docs/fork/
+!docs/UPSTREAM-README.md
+
+# fork: tracked Claude Code skill for fork maintenance
+!.claude/
+!.claude/skills/
+!.claude/skills/fork-maintenance/
+!.claude/skills/fork-maintenance/SKILL.md
+dist/

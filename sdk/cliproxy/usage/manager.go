@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+	internallogging "github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -20,14 +22,22 @@ const AutoServiceTier = "auto"
 
 // Record contains the usage statistics captured for a single provider request.
 type Record struct {
+	// RequestID uniquely identifies this specific model execution instance (UUID v4).
+	RequestID string
+	// TraceID identifies the parent inbound HTTP request when available (8-character hex).
+	TraceID  string
 	Provider string
+	// BaseURL stores the configured upstream base URL when available.
+	BaseURL string
 	// ExecutorType stores the concrete executor type that handled the request.
-	ExecutorType string
-	Model        string
-	Alias        string
-	APIKey       string
-	AuthID       string
-	AuthIndex    string
+	ExecutorType    string
+	Model           string
+	Alias           string
+	APIKey          string
+	SessionID       string
+	ParentSessionID string
+	AuthID          string
+	AuthIndex       string
 	// AccessTokenSHA256 identifies the OAuth token version without exposing the token.
 	AccessTokenSHA256 string
 	AuthType          string
@@ -41,10 +51,29 @@ type Record struct {
 	RequestServiceTier string
 	// ResponseServiceTier stores the final tier reported by the upstream response.
 	ResponseServiceTier string
+	// ResponseModel stores the model name reported by the upstream response, empty when unknown.
+	ResponseModel string
 	// Generate reports whether the client requested actual generation.
 	// nil or true means generation is enabled; only an explicit false disables generation.
 	// Use GenerateFlag to set the value and GenerateEnabled to read it with the default.
 	Generate *bool
+	// ClaudeSessionID is the Claude Code agent session UUID the request belongs
+	// to, when the executor could resolve one. Empty for every other caller.
+	ClaudeSessionID string
+	// ClientFingerprint is the downstream caller's User-Agent. It is the only
+	// client identity available for a caller that sends no session id.
+	ClientFingerprint string
+	// CacheMissReason mirrors Detail.CacheMissReason for sinks that only read
+	// the record header.
+	CacheMissReason string
+	// CacheMissedTokens mirrors Detail.CacheMissedTokens.
+	CacheMissedTokens int64
+	// RequestMaxTokens is the max_tokens the request body carried, which is what
+	// makes a one-token keepalive probe recognizable in a usage stream.
+	RequestMaxTokens int64
+	// ProbeOrigin names the internal subsystem that issued the request instead
+	// of a client. Empty for ordinary client traffic.
+	ProbeOrigin string
 	// Stream reports whether the request was executed in streaming mode.
 	Stream      bool
 	RequestedAt time.Time
@@ -71,9 +100,20 @@ type Detail struct {
 	CachedTokens        int64
 	CacheReadTokens     int64
 	CacheCreationTokens int64
-	TotalTokens         int64
-	TokenBreakdown      TokenBreakdown
-	ResponseServiceTier string
+	// CacheCreation5mTokens and CacheCreation1hTokens split CacheCreationTokens
+	// across the two Anthropic cache pools
+	// (usage.cache_creation.ephemeral_5m_input_tokens / ephemeral_1h_input_tokens).
+	// Both stay zero for providers that report no pool breakdown.
+	CacheCreation5mTokens int64
+	CacheCreation1hTokens int64
+	TotalTokens           int64
+	TokenBreakdown        TokenBreakdown
+	ResponseServiceTier   string
+	// CacheMissReason is diagnostics.cache_miss_reason.type from the upstream
+	// response. Anthropic returns it only while the cache-diagnosis beta is on.
+	CacheMissReason string
+	// CacheMissedTokens is diagnostics.cache_miss_reason.cache_missed_input_tokens.
+	CacheMissedTokens int64
 }
 
 type requestedModelAliasContextKey struct{}
@@ -81,6 +121,46 @@ type reasoningEffortContextKey struct{}
 type serviceTierContextKey struct{}
 type generateContextKey struct{}
 type streamContextKey struct{}
+type executionRequestIDContextKey struct{}
+type executionTraceIDContextKey struct{}
+
+// WithExecutionRequestID attaches a specific execution instance request ID to the context.
+func WithExecutionRequestID(ctx context.Context, requestID string) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.WithValue(ctx, executionRequestIDContextKey{}, strings.TrimSpace(requestID))
+}
+
+// ExecutionRequestIDFromContext retrieves the execution instance request ID from the context.
+func ExecutionRequestIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(executionRequestIDContextKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
+
+// WithTraceID attaches the parent inbound HTTP request ID to the context.
+func WithTraceID(ctx context.Context, traceID string) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return context.WithValue(ctx, executionTraceIDContextKey{}, strings.TrimSpace(traceID))
+}
+
+// TraceIDFromContext retrieves the parent inbound HTTP request ID from the context.
+func TraceIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if v, ok := ctx.Value(executionTraceIDContextKey{}).(string); ok {
+		return v
+	}
+	return ""
+}
 
 // WithRequestedModelAlias stores the client-requested model name for usage sinks.
 func WithRequestedModelAlias(ctx context.Context, alias string) context.Context {
@@ -339,6 +419,20 @@ func (m *Manager) Publish(ctx context.Context, record Record) {
 	if m == nil {
 		return
 	}
+	if strings.TrimSpace(record.RequestID) == "" {
+		if reqID := ExecutionRequestIDFromContext(ctx); reqID != "" {
+			record.RequestID = reqID
+		} else {
+			record.RequestID = uuid.NewString()
+		}
+	}
+	if strings.TrimSpace(record.TraceID) == "" {
+		if trID := TraceIDFromContext(ctx); trID != "" {
+			record.TraceID = trID
+		} else if trID := internallogging.GetRequestID(ctx); trID != "" {
+			record.TraceID = trID
+		}
+	}
 	// ensure worker is running even if Start was not called explicitly
 	m.Start(context.Background())
 	m.mu.Lock()
@@ -412,3 +506,34 @@ func StartDefault(ctx context.Context) { DefaultManager().Start(ctx) }
 
 // StopDefault stops the default manager's dispatcher.
 func StopDefault() { DefaultManager().Stop() }
+
+type probeOriginContextKey struct{}
+
+// KeepaliveProbeOrigin marks a request issued by the prompt-cache keepalive
+// scheduler rather than by a client.
+const KeepaliveProbeOrigin = "cache-keepalive"
+
+// WithProbeOrigin marks ctx as belonging to an internally generated request and
+// names the subsystem that issued it.
+func WithProbeOrigin(ctx context.Context, origin string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, probeOriginContextKey{}, origin)
+}
+
+// ProbeOriginFromContext returns the internal subsystem that issued the request,
+// or the empty string for ordinary client traffic.
+func ProbeOriginFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if value, ok := ctx.Value(probeOriginContextKey{}).(string); ok {
+		return strings.TrimSpace(value)
+	}
+	return ""
+}

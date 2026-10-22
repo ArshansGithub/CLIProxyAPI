@@ -10,7 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -160,7 +161,18 @@ func TestRefreshTokens_DeduplicatesConcurrentRefreshAcrossInstances(t *testing.T
 	}
 }
 
+// allowCodexProxyTestHost permits the destination these proxy tests inspect the
+// proxy function with. Nothing is dialled; the gate runs on every request, so
+// the host still has to be permitted.
+func allowCodexProxyTestHost(t *testing.T) {
+	t.Helper()
+	egress.SetConfigWithBuiltin(nil, []string{"example.com",
+		// Forward proxy hosts are checked by the gate too; admit the fakes these tests route through.
+		"proxy.example.com", "global.example.com", "override.example.com"})
+}
+
 func TestNewCodexAuthWithProxyURL_OverrideDirectDisablesProxy(t *testing.T) {
+	allowCodexProxyTestHost(t)
 	cfg := &config.Config{SDKConfig: config.SDKConfig{ProxyURL: "http://proxy.example.com:8080"}}
 	auth := NewCodexAuthWithProxyURL(cfg, "direct")
 
@@ -168,12 +180,21 @@ func TestNewCodexAuthWithProxyURL_OverrideDirectDisablesProxy(t *testing.T) {
 	if !ok || transport == nil {
 		t.Fatalf("expected http.Transport, got %T", auth.httpClient.Transport)
 	}
-	if transport.Proxy != nil {
-		t.Fatal("expected direct transport to disable proxy function")
+	req, errReq := http.NewRequest(http.MethodGet, "https://example.com", nil)
+	if errReq != nil {
+		t.Fatalf("new request: %v", errReq)
+	}
+	proxyURL, errProxy := transport.Proxy(req)
+	if errProxy != nil {
+		t.Fatalf("proxy func: %v", errProxy)
+	}
+	if proxyURL != nil {
+		t.Fatalf("expected direct transport to select no proxy, got %v", proxyURL)
 	}
 }
 
 func TestNewCodexAuthWithProxyURL_OverrideProxyTakesPrecedence(t *testing.T) {
+	allowCodexProxyTestHost(t)
 	cfg := &config.Config{SDKConfig: config.SDKConfig{ProxyURL: "http://global.example.com:8080"}}
 	auth := NewCodexAuthWithProxyURL(cfg, "http://override.example.com:8081")
 

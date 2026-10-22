@@ -9,10 +9,11 @@ import (
 	"time"
 
 	tls "github.com/refraction-networking/utls"
-	internalcache "github.com/router-for-me/CLIProxyAPI/v7/internal/cache"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/httpwire"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
+	internalcache "github.com/router-for-me/CLIProxyAPI/v8/internal/cache"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/httpwire"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/proxy"
 )
@@ -191,10 +192,10 @@ func newUtlsRoundTripper(cfg *config.SDKConfig) *utlsRoundTripper {
 		dialer:       dialer,
 		sessionCache: claudeOAuthSessionCache(proxyURL),
 	}
-	roundTripper.transport = &http.Transport{
+	roundTripper.transport = egress.GuardTransport(&http.Transport{
 		ForceAttemptHTTP2: false,
 		DialTLSContext:    roundTripper.dialTLSContext,
-	}
+	}, "claude.oauthTransport")
 	return roundTripper
 }
 
@@ -250,5 +251,5 @@ func (t *utlsRoundTripper) CloseIdleConnections() {
 }
 
 func NewAnthropicHttpClient(cfg *config.SDKConfig) *http.Client {
-	return &http.Client{Transport: newUtlsRoundTripper(cfg)}
+	return &http.Client{Transport: egress.RoundTripper(newUtlsRoundTripper(cfg), "claude.oauthUTLS")}
 }

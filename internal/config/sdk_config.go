@@ -6,6 +6,14 @@ package config
 
 // SDKConfig represents the application's configuration, loaded from a YAML file.
 type SDKConfig struct {
+	// OAuthOnlyFields records v8 provider settings that must wait for credential
+	// selection and must not affect API-key credentials. Config YAML snapshots
+	// preserve the corresponding v8 paths instead of serializing this metadata.
+	OAuthOnlyFields map[string]bool `yaml:"-" json:"-"`
+
+	// CodexResponseSteering mirrors the provider-wide runtime setting for API handlers.
+	CodexResponseSteering bool `yaml:"-" json:"-"`
+
 	// ProxyURL is the URL of an optional proxy server to use for outbound requests.
 	ProxyURL string `yaml:"proxy-url" json:"proxy-url"`
 
@@ -51,6 +59,12 @@ type SDKConfig struct {
 	// ClaudeCode configures Claude Code compatibility behavior.
 	ClaudeCode ClaudeCodeConfig `yaml:"claude-code" json:"claude-code"`
 
+	// UsageCacheStats configures the retained per-session prompt-cache statistics store.
+	UsageCacheStats UsageCacheStatsConfig `yaml:"usage-cache-stats" json:"usage-cache-stats"`
+
+	// Egress configures the outbound host allowlist enforced by internal/egress.
+	Egress EgressConfig `yaml:"egress" json:"egress"`
+
 	// APIKeys is a list of keys for authenticating clients to this proxy server.
 	APIKeys []string `yaml:"api-keys" json:"api-keys"`
 
@@ -70,6 +84,9 @@ type SDKConfig struct {
 type ClaudeCodeConfig struct {
 	// DisableCloakingModelList disables model ID cloaking in Anthropic model list responses.
 	DisableCloakingModelList bool `yaml:"disable-cloaking-model-list" json:"disable-cloaking-model-list"`
+
+	// CacheKeepalive configures agent-aware prompt-cache keepalive probes.
+	CacheKeepalive ClaudeCodeCacheKeepaliveConfig `yaml:"cache-keepalive" json:"cache-keepalive"`
 }
 
 // StreamingConfig holds server streaming behavior configuration.

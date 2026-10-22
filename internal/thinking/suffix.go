@@ -7,6 +7,8 @@ package thinking
 import (
 	"strconv"
 	"strings"
+
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 )
 
 // ParseSuffix extracts thinking suffix from a model name.
@@ -24,12 +26,12 @@ func ParseSuffix(model string) SuffixResult {
 	// Find the last opening parenthesis
 	lastOpen := strings.LastIndex(model, "(")
 	if lastOpen == -1 {
-		return SuffixResult{ModelName: model, HasSuffix: false}
+		return parseHyphenLevelSuffix(model)
 	}
 
 	// Check if the string ends with a closing parenthesis
 	if !strings.HasSuffix(model, ")") {
-		return SuffixResult{ModelName: model, HasSuffix: false}
+		return parseHyphenLevelSuffix(model)
 	}
 
 	// Extract components
@@ -145,4 +147,41 @@ func ParseLevelSuffix(rawSuffix string) (level ThinkingLevel, ok bool) {
 	default:
 		return "", false
 	}
+}
+
+// hyphenLevelSuffixes are the effort words an effort-suffixed slug may end in.
+// Special values (none, auto, a budget) stay parenthesised only.
+var hyphenLevelSuffixes = []string{"-minimal", "-low", "-medium", "-high", "-xhigh", "-max"}
+
+// parseHyphenLevelSuffix reads an effort-suffixed slug: "claude-opus-5-5-medium"
+// is "claude-opus-5-5(medium)" spelled the way a client that cannot carry
+// parentheses in a model id (an agent definition) can name it. The pin then
+// lives in the slug, and the suffix takes priority over any effort in the body.
+//
+// Real catalog ids end in level words too (gemini-3.1-pro-low,
+// gpt-oss-120b-medium), so the split happens only when the whole id is not a
+// known model and the remainder is. Prefixed clones ("scoped/claude-opus-5-5")
+// are registered models, so "scoped/claude-opus-5-5-medium" resolves to the
+// clone and keeps its account pin.
+func parseHyphenLevelSuffix(model string) SuffixResult {
+	none := SuffixResult{ModelName: model, HasSuffix: false}
+	trimmed := strings.TrimSpace(model)
+	lower := strings.ToLower(trimmed)
+	for _, suffix := range hyphenLevelSuffixes {
+		if !strings.HasSuffix(lower, suffix) {
+			continue
+		}
+		base := trimmed[:len(trimmed)-len(suffix)]
+		if base == "" || strings.HasSuffix(base, "/") {
+			return none
+		}
+		if registry.LookupModelInfo(trimmed) != nil {
+			return none
+		}
+		if registry.LookupModelInfo(base) == nil {
+			return none
+		}
+		return SuffixResult{ModelName: base, HasSuffix: true, RawSuffix: trimmed[len(base)+1:], Hyphenated: true}
+	}
+	return none
 }

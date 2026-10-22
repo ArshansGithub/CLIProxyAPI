@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/tidwall/gjson"
 )
 
@@ -75,13 +75,24 @@ const (
 	claudeCodeHelperShapeNone claudeCodeHelperShape = iota
 	claudeCodeHelperShapeMinimal
 	claudeCodeHelperShapeStructured
-
-	claudeCodeHelperModel = "claude-haiku-4-5-20251001"
+	claudeCodeHelperShapeTitle280
 )
 
-// These are the six exact beta sequences observed across 14 markerless native
-// Claude Code 2.1.220 Haiku helper requests. Keeping the allowlist exact avoids
-// turning the helper exception into a generic no-claude-code-beta bypass.
+// claudeCodeHelperModels are the Haiku ids Claude Code uses for its markerless
+// helper calls: claude-haiku-4-5-20251001 up to 2.1.292, and claude-haiku-5-5
+// from 2.1.293 (released 2026-10-07), which made Haiku 5.5 the default Haiku.
+// Both stay accepted because an older binary keeps sending the dated 4.5 id.
+var claudeCodeHelperModels = map[string]bool{
+	"claude-haiku-4-5-20251001": true,
+	"claude-haiku-5-5":          true,
+}
+
+// These are the exact beta sequences observed on markerless native Haiku
+// helper requests. The first six are Claude Code 2.1.220. The last is the
+// 2.1.280 title helper captured 2026-09-23: structured output, then
+// server-side fallback, fallback credit, and cache diagnosis. Keeping the
+// allowlist exact avoids turning the helper exception into a generic
+// no-claude-code-beta bypass.
 var measuredClaudeCodeHelperBetaProfiles = map[string]claudeCodeHelperShape{
 	claudeCodeHelperBetaProfile(true):  claudeCodeHelperShapeMinimal,
 	claudeCodeHelperBetaProfile(false): claudeCodeHelperShapeMinimal,
@@ -100,6 +111,12 @@ var measuredClaudeCodeHelperBetaProfiles = map[string]claudeCodeHelperShape{
 	claudeCodeHelperBetaProfile(false,
 		"structured-outputs-2025-12-15",
 	): claudeCodeHelperShapeStructured,
+	claudeCodeHelperBetaProfile(true,
+		"structured-outputs-2025-12-15",
+		"server-side-fallback-2026-06-01",
+		"fallback-credit-2026-06-01",
+		"cache-diagnosis-2026-04-07",
+	): claudeCodeHelperShapeTitle280,
 }
 
 // ClaudeCodeRequestDetection records the strong signals and first-party
@@ -273,18 +290,24 @@ func measuredClaudeCodeHelperHeadersMatch(headers http.Header, cfg *config.Confi
 	if !meetsClaudeDeviceProfileBaseline(candidate, profile) {
 		return false
 	}
-	if async := headerValue(headers, "X-Stainless-Async"); (shape == claudeCodeHelperShapeStructured && async != "async") ||
-		(shape == claudeCodeHelperShapeMinimal && async != "") {
+	// Claude Code 2.1.258 (@anthropic-ai/sdk 0.112.1), measured 2026-09-02 on the
+	// quota probe and the session-title helper: X-Stainless-Async is never sent
+	// and both shapes offer the full compression set. x-client-request-id is
+	// attached only when the client's base URL is api.anthropic.com, so a client
+	// pointed at CPA through ANTHROPIC_BASE_URL sends none while one that reaches
+	// CPA through a transparent proxy still carries the UUID; both are accepted.
+	if headerValue(headers, "X-Stainless-Async") != "" {
 		return false
 	}
-	compression := headerValue(headers, "Accept-Encoding")
-	if (shape == claudeCodeHelperShapeStructured && compression != "gzip, deflate, br, zstd") ||
-		(shape == claudeCodeHelperShapeMinimal && compression != "gzip") {
+	if headerValue(headers, "Accept-Encoding") != "gzip, deflate, br, zstd" {
 		return false
 	}
-	requestID := headerValue(headers, "X-Client-Request-Id")
-	_, errRequestID := uuid.Parse(requestID)
-	return errRequestID == nil
+	if requestID := headerValue(headers, "X-Client-Request-Id"); requestID != "" {
+		if _, errRequestID := uuid.Parse(requestID); errRequestID != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func measuredClaudeCodeHelperSessionMatches(headers http.Header, payload []byte) bool {
@@ -312,18 +335,23 @@ func measuredClaudeCodeHelperSessionMatches(headers http.Header, payload []byte)
 func measuredClaudeCodeHelperBodyShape(payload []byte) claudeCodeHelperShape {
 	minimalKeys := []string{"model", "max_tokens", "messages", "metadata"}
 	structuredKeys := []string{"model", "messages", "system", "tools", "metadata", "max_tokens", "thinking", "temperature", "output_config", "stream"}
+	structuredTitle280Keys := []string{"model", "max_tokens", "messages", "metadata", "output_config"}
 	shape := claudeCodeHelperShapeNone
+	isTitle280 := false
 	switch {
 	case claudeJSONObjectHasKeys(payload, minimalKeys):
 		shape = claudeCodeHelperShapeMinimal
 	case claudeJSONObjectHasKeys(payload, structuredKeys):
 		shape = claudeCodeHelperShapeStructured
+	case claudeJSONObjectHasKeys(payload, structuredTitle280Keys):
+		shape = claudeCodeHelperShapeTitle280
+		isTitle280 = true
 	default:
 		return claudeCodeHelperShapeNone
 	}
 
 	maxTokens := gjson.GetBytes(payload, "max_tokens")
-	if gjson.GetBytes(payload, "model").String() != claudeCodeHelperModel ||
+	if !claudeCodeHelperModels[gjson.GetBytes(payload, "model").String()] ||
 		maxTokens.Type != gjson.Number {
 		return claudeCodeHelperShapeNone
 	}
@@ -339,6 +367,22 @@ func measuredClaudeCodeHelperBodyShape(payload []byte) claudeCodeHelperShape {
 
 	if shape == claudeCodeHelperShapeMinimal {
 		if maxTokens.Raw != "1" || message.Get("content").Type != gjson.String {
+			return claudeCodeHelperShapeNone
+		}
+		return shape
+	}
+
+	if isTitle280 {
+		outputConfig := gjson.GetBytes(payload, "output_config")
+		format := outputConfig.Get("format")
+		schema := format.Get("schema")
+		if maxTokens.Raw != "80" ||
+			message.Get("content").Type != gjson.String ||
+			!claudeJSONObjectHasKeys([]byte(outputConfig.Raw), []string{"format"}) ||
+			!claudeJSONObjectHasKeys([]byte(format.Raw), []string{"type", "schema"}) ||
+			format.Get("type").String() != "json_schema" ||
+			!claudeJSONObjectHasKeys([]byte(schema.Raw), []string{"type"}) ||
+			schema.Get("type").String() != "object" {
 			return claudeCodeHelperShapeNone
 		}
 		return shape
@@ -466,6 +510,7 @@ func plausibleClaudeCodeUserAgent(userAgent string, cfg *config.Config) bool {
 	}
 	candidate, okCandidate := parseClaudeCLIVersion(userAgent)
 	baseline, okBaseline := parseClaudeCLIVersion(defaultClaudeDeviceProfile(cfg).UserAgent)
+	// Patch releases (>= baseline.patch) within the release line preserve native passthrough.
 	return okCandidate && okBaseline && plausibleClaudeCLIVersion(candidate, baseline)
 }
 
