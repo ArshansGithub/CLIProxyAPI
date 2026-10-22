@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
 	"io"
 	"net"
 	"net/http"
@@ -189,6 +190,10 @@ func (p *silentConnectProxy) handle(conn net.Conn) {
 // each handshake at the configured one-second bound, and Manager performs
 // the initial attempt plus all three request-retry rounds on one credential.
 func TestClaudeExecutorManagerRetriesSilentTLSHandshakeThroughConnectProxy(t *testing.T) {
+	// The request reaches a registered provider host through a loopback fake;
+	// the egress gate checks the destination, so install the built-in provider
+	// hosts (a bare test process allows loopback only).
+	egress.SetConfigWithBuiltin(nil, egress.BuiltinHosts())
 	proxy, proxyURL := startSilentConnectProxy(t)
 
 	cfg := &config.Config{}

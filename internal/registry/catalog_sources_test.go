@@ -69,6 +69,9 @@ func TestCatalogFetcherSources(t *testing.T) {
 }
 
 func TestCatalogSourceSwitchRejectsStalePublication(t *testing.T) {
+	if !remoteModelRefreshEnabled {
+		t.Skip("the locked build never starts a catalog refresh")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	started, release, done := make(chan struct{}), make(chan struct{}), make(chan struct{})

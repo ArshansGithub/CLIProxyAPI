@@ -8,7 +8,6 @@ import (
 
 const maxCodexClientModelsSize = 8 << 20
 
-
 // StartCodexClientModelsUpdater starts a background updater that fetches the
 // Codex client model catalog immediately and then refreshes it every 3 hours.
 // Safe to call multiple times; only one updater will run.

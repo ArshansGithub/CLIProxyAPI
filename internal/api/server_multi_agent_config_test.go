@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/lockedbuild"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -15,6 +16,9 @@ import (
 func TestModelsMultiAgentClientConfigAndReload(t *testing.T) {
 	for _, source := range []string{"local", "home"} {
 		t.Run(source, func(t *testing.T) {
+			if source == "home" && lockedbuild.Enabled {
+				t.Skip("the locked build refuses Home mode")
+			}
 			const modelID = "config-multi-agent-synthetic"
 			const clientID = "config-multi-agent-models"
 			modelRegistry := registry.GetGlobalRegistry()

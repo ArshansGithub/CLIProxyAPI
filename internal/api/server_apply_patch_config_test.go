@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/lockedbuild"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,6 +17,9 @@ import (
 func TestModelsApplyPatchClientConfigAndReload(t *testing.T) {
 	for _, source := range []string{"local", "home"} {
 		t.Run(source, func(t *testing.T) {
+			if source == "home" && lockedbuild.Enabled {
+				t.Skip("the locked build refuses Home mode")
+			}
 			modelRegistry := registry.GetGlobalRegistry()
 			models := []*registry.ModelInfo{{ID: "gpt-5.5"}, {ID: "config-patch-synthetic"}, {ID: "gpt-image-2"}}
 			modelRegistry.RegisterClient("config-patch-models", "codex", models)

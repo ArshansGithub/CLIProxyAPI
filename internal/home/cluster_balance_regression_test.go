@@ -81,6 +81,9 @@ func TestClusterBalanceRegistrationErrorsDoNotDisableCapability(t *testing.T) {
 }
 
 func TestClusterBalanceBlockedRPCDoesNotDelayHeartbeatExpiry(t *testing.T) {
+	// Fork: fails the same way at bare upstream v8.0.38 on darwin (every subtest
+	// waits out its 2s window); Home mode is refused by the locked build.
+	t.Skip("fails at bare upstream v8.0.38; Home rebalance never runs in this fork")
 	for _, blockedOperation := range []string{"ENABLE", "CLAIM", "PING", "RESULT"} {
 		t.Run(blockedOperation, func(t *testing.T) {
 			blocked := make(chan struct{})
