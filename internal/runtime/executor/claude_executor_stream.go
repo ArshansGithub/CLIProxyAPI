@@ -162,7 +162,6 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 
 	ensureModelMaxTokensDoc(doc, baseModel)
-	stripFallbacksForUpstreamDoc(doc, confirmedClaudeCode, stripSessionKey(claudeSessionID, incomingHeaders))
 
 	// Disable thinking if tool_choice forces tool use (Anthropic API constraint)
 	disableThinkingIfToolChoiceForcedDoc(doc)
@@ -248,7 +247,10 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 		}
 	}
 	stripDefaultKimiClaudeCodeAttributionDoc(auth, url, fp.ProfileClaudeCodeCLI, doc)
-	applyClaudePreservedThinkingBindingDoc(doc)
+	// A confirmed native client owns its thinking block binding (passthrough).
+	if !confirmedClaudeCode {
+		applyClaudePreservedThinkingBindingDoc(doc)
+	}
 	// User rules match the fully prepared business body and are applied only once.
 	touchedPayloadPaths := helps.ApplyPayloadConfigWithTrackedPathsDoc(
 		e.cfg, baseModel, to.String(), from.String(), "", doc, stripTranslatedDefaultMaxTokens(from, originalPayload, originalTranslated),
@@ -260,6 +262,8 @@ func (e *ClaudeExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.A
 	}
 	extraBetas, _ = extractAndRemoveBetasDoc(doc)
 	stripPromptCacheOptionsDoc(doc)
+	// no-substitution: the finished body, after payload rules and before CCH signing.
+	stripFallbacksForUpstreamDoc(doc, confirmedClaudeCode, stripSessionKey(claudeSessionID, incomingHeaders))
 	bodyForUpstream := doc.Bytes()
 	body = bodyForUpstream
 	bodyForTranslation := bodyForUpstream

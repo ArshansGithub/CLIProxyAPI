@@ -234,7 +234,10 @@ func (e *ClaudeExecutor) countTokensUpstream(ctx context.Context, auth *cliproxy
 		prepareClaudeOAuthToolNamesForUpstreamDoc(doc, mcpAliases)
 	}
 	sanitizeClaudeMessagesForClaudeUpstreamWithDebugDoc(ctx, doc, baseModel, helps.APIKeyModelIsCompat(req))
-	applyClaudePreservedThinkingBindingDoc(doc)
+	// A confirmed native client owns its thinking block binding (passthrough).
+	if !confirmedClaudeCode {
+		applyClaudePreservedThinkingBindingDoc(doc)
+	}
 	stripPromptCacheOptionsDoc(doc)
 	// Two different reasons converge on the same deletions, and they must stay
 	// separable.
