@@ -8,4 +8,5 @@ registry.npmjs.org             # xAI Grok CLI version poll (internal/runtime/exe
 cpamc.router-for.me            # unverified management-panel fallback host; compiled out under locked
 app.devin.ai                   # Devin OAuth authorize page the user's browser opens (internal/auth/devin); the proxy never fetches it
 antigravity-hub-auto-updater-974169037036.us-central1.run.app  # antigravity version-manifest host; code has a built-in fallback, not a provider API
+aiplatform.                    # Vertex multi-region prefix of fmt.Sprintf("https://aiplatform.%s.rep.googleapis.com") for location us/eu (gemini_vertex_executor.go, helps/vertex_openapi.go, v8.0.44); refused, no Vertex credential is configured
 ...                             # not a host: doc-comment example in internal/runtime/executor/xai_executor_request.go showing a JSON field rewrite ("https://...")
