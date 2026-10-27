@@ -210,7 +210,7 @@ func TestApplyClaudeLegacyDeviceHeadersKeepNewerVersionsUsesConfiguredBaseline(t
 	incoming.Set("X-Stainless-Package-Version", "0.128.0")
 	incoming.Set("X-Stainless-Runtime-Version", "v26.5.0")
 
-	ApplyClaudeLegacyDeviceHeaders(request, incoming, cfg, true, true)
+	ApplyClaudeLegacyDeviceHeaders(request, incoming, cfg, true)
 
 	if got := request.Header.Get("User-Agent"); got != "claude-cli/2.2.5 (external, cli)" {
 		t.Fatalf("User-Agent = %q, want claude-cli/2.2.5 (external, cli)", got)
