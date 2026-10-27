@@ -164,6 +164,11 @@
   layer: fix
   upstream_pr: 5444
   drop: "upstream merges #5444"
+  note: >-
+    v8.0.44: upstream's d2e61d19 added a keepNewerVersions flag to
+    ApplyClaudeLegacyDeviceHeaders for cloak_mode never only; the floor keeps
+    newer confirmed-client versions everywhere, so the flag is not carried and
+    the variadic slot stays the learned profile.
 
 # ------------------------------------------------ standalone fork commits ----
 
@@ -224,6 +229,7 @@
 - subjects:
     - "fix: reconcile carried patches with v7.2.159's equivalents"
     - "fix: reconcile carried patches with v8.0.38's equivalents"
+    - "fix: reconcile carried patches with v8.0.44's equivalents"
   layer: fix
   upstream_pr: null
   drop: >-
@@ -239,6 +245,8 @@
     no-substitution strip moved after upstream's relocated payload rules, the
     block-binding and web_search passthrough guards, fork config sections not
     written back when they hold only defaults, and the antigravity slug test.
+    The v8.0.44 commit: upstream's new keepNewerVersions test call adjusted to
+    the #5444 floor patch's signature (the floor already keeps newer versions).
 
 - subject: "fix(thinking): never rewrite a requested effort silently"
   layer: fix
