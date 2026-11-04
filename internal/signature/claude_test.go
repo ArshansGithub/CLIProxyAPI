@@ -1,9 +1,8 @@
 package signature
 
 import (
-	"github.com/MoeForge/moego/base64"
-	"encoding/base64"
 	"errors"
+	"github.com/MoeForge/moego/base64"
 	"strings"
 	"testing"
 
@@ -897,11 +896,11 @@ func TestClaudeModelFreeCAISSignature_PreservesSignedHistory(t *testing.T) {
 	input := []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"before"}]},{"role":"system","content":[{"type":"text","text":"directive"}]},{"role":"assistant","content":[{"type":"thinking","thinking":"reason","signature":"` + signature + `"}]},{"role":"user","content":[{"type":"text","text":"after"}]}]}`)
 
 	output, report := SanitizeClaudeMessagesForClaudeUpstream(input, "claude-fable-5-1")
-	if got := gjson.GetBytes(output, "messages.#").Int(); got != 4 {
+	if got := ojson.GetBytes(output, "messages.#").Int(); got != 4 {
 		t.Errorf("messages.# = %d, want 4; body=%s", got, output)
 	}
 
-	messages := gjson.GetBytes(output, "messages").Array()
+	messages := ojson.GetBytes(output, "messages").Array()
 	wantRoles := []string{"user", "system", "assistant", "user"}
 	if len(messages) == len(wantRoles) {
 		for i, want := range wantRoles {
@@ -918,7 +917,7 @@ func TestClaudeModelFreeCAISSignature_PreservesSignedHistory(t *testing.T) {
 			t.Errorf("messages[%d] role=system is followed by %q, want assistant; body=%s", i, got, output)
 		}
 	}
-	if got := gjson.GetBytes(output, "messages.2.content.0.signature").String(); got != signature {
+	if got := ojson.GetBytes(output, "messages.2.content.0.signature").String(); got != signature {
 		t.Errorf("model-free thinking signature was not preserved; body=%s", output)
 	}
 	if report.Preserved != 1 || report.DroppedBlocks != 0 {

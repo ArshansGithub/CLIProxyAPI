@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	log "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
-	"github.com/tidwall/gjson"
 )
 
 func TestRefuseUnsupportedEffortSwitch(t *testing.T) {
@@ -64,7 +64,7 @@ func TestClampRefusedWhenSwitchOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("switch off: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "max" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "max" {
 		t.Fatalf("switch off: reasoning.effort = %q, want max", got)
 	}
 	if got := warningsMentioning(hook, "level clamped"); len(got) != 1 {
@@ -83,7 +83,7 @@ func TestSupportedLevelPassesWhenSwitchOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "high" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "high" {
 		t.Fatalf("reasoning.effort = %q", got)
 	}
 	if len(hook.AllEntries()) != 0 {
@@ -115,7 +115,7 @@ func TestRemapRefusedWhenSwitchOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("switch off: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "xhigh" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "xhigh" {
 		t.Fatalf("switch off: reasoning.effort = %q, want xhigh", got)
 	}
 	if got := warningsMentioning(hook, "level remapped"); len(got) != 1 {
@@ -147,7 +147,7 @@ func TestConfigurationUpdateDropRefusedWhenSwitchOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("switch off: %v", err)
 	}
-	if got := gjson.GetBytes(out, "input.#").Int(); got != 1 {
+	if got := ojson.GetBytes(out, "input.#").Int(); got != 1 {
 		t.Fatalf("switch off: input length = %d, want 1", got)
 	}
 	if got := warningsMentioning(hook, "configuration_update"); len(got) != 1 {
@@ -166,7 +166,7 @@ func TestConfigurationUpdateEqualToBaselineNotRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking: %v", err)
 	}
-	if got := gjson.GetBytes(out, "input.#").Int(); got != 1 {
+	if got := ojson.GetBytes(out, "input.#").Int(); got != 1 {
 		t.Fatalf("input length = %d, want 1 (update stripped)", got)
 	}
 	if got := errorsMentioning(hook, "effort refused"); len(got) != 0 {
@@ -189,7 +189,7 @@ func TestKimiFamilyClampKeptWhenSwitchOn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Kimi max must still clamp, got error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "output_config.effort").String(); got != "high" {
+	if got := ojson.GetBytes(out, "output_config.effort").String(); got != "high" {
 		t.Fatalf("output_config.effort = %q, want high", got)
 	}
 }

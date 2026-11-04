@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/MoeForge/moego/ojson"
 	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/keepalive"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -16,7 +17,6 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
-	"github.com/tidwall/gjson"
 )
 
 // cacheKeepaliveProbeProvider is the auth provider a Claude Code keepalive probe
@@ -59,7 +59,7 @@ func (p cacheKeepaliveProber) Probe(ctx context.Context, probe keepalive.ProbeRe
 	if err != nil {
 		return keepalive.ProbeResult{}, err
 	}
-	usage := gjson.GetBytes(resp.Payload, "usage")
+	usage := ojson.GetBytes(resp.Payload, "usage")
 	reason, missedTokens := claudeCacheMissReason(resp.Payload)
 	return keepalive.ProbeResult{
 		CacheReadInputTokens:     usage.Get("cache_read_input_tokens").Int(),
@@ -85,8 +85,8 @@ func claudeCacheMissReason(payload []byte) (string, int64) {
 	if len(payload) == 0 {
 		return "", 0
 	}
-	if gjson.ValidBytes(payload) {
-		root := gjson.ParseBytes(payload)
+	if ojson.ValidBytes(payload) {
+		root := ojson.ParseBytes(payload)
 		// Non-streaming: diagnostics sits beside usage at the top level.
 		if reason, tokens := cacheMissReasonAt(root); reason != "" || tokens != 0 {
 			return reason, tokens
@@ -104,10 +104,10 @@ func claudeCacheMissReason(payload []byte) (string, int64) {
 			continue
 		}
 		event := bytes.TrimSpace(line[len("data:"):])
-		if len(event) == 0 || !gjson.ValidBytes(event) {
+		if len(event) == 0 || !ojson.ValidBytes(event) {
 			continue
 		}
-		root := gjson.ParseBytes(event)
+		root := ojson.ParseBytes(event)
 		if root.Get("type").String() != "message_start" {
 			continue
 		}
@@ -118,7 +118,7 @@ func claudeCacheMissReason(payload []byte) (string, int64) {
 	return "", 0
 }
 
-func cacheMissReasonAt(node gjson.Result) (string, int64) {
+func cacheMissReasonAt(node ojson.Result) (string, int64) {
 	reason := node.Get("diagnostics.cache_miss_reason")
 	if !reason.Exists() {
 		return "", 0

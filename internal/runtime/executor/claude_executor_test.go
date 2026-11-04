@@ -31,8 +31,6 @@ import (
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 	"google.golang.org/protobuf/encoding/protowire"
 )
 

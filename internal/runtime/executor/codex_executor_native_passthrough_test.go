@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/tidwall/gjson"
+	"github.com/MoeForge/moego/ojson"
 )
 
 // Native Codex clients (Originator header present) are passed through unchanged:
@@ -18,13 +18,13 @@ func TestNormalizeCodexToolSchemasSkippedForNativeCodexCaller(t *testing.T) {
 		{"const":"i","description":"I"},{"const":"j","description":"J"},{"const":"k","description":"K"},{"const":"l","description":"L"},{"const":"m","description":"M"}]}}}}]}`)
 
 	native := http.Header{"Originator": []string{"Codex Desktop"}, "User-Agent": []string{"Codex Desktop/26.901.51231 codex-cli/0.153.4"}}
-	if got := normalizeCodexToolSchemasForCaller(body, native); !bytes.Equal(got, body) {
+	if got := normalizeCodexToolSchemasForCallerBytes(body, native); !bytes.Equal(got, body) {
 		t.Fatalf("native Codex request was reshaped:\n got: %s\nwant: %s", got, body)
 	}
 
 	other := http.Header{"User-Agent": []string{"opencode/1.0"}}
-	got := normalizeCodexToolSchemasForCaller(body, other)
-	if gjson.GetBytes(got, "tools.0.parameters.properties.action.oneOf").Exists() {
+	got := normalizeCodexToolSchemasForCallerBytes(body, other)
+	if ojson.GetBytes(got, "tools.0.parameters.properties.action.oneOf").Exists() {
 		t.Fatalf("non-native request kept the complex oneOf: %s", got)
 	}
 }
@@ -39,4 +39,10 @@ func TestCodexTerminalEmptyIncompleteSkippedForNativeCodexCaller(t *testing.T) {
 	if !codexTerminalEmptyIncompleteForCaller(other, payload, 0, false) {
 		t.Fatalf("non-native caller should still get the empty-incomplete failure classification")
 	}
+}
+
+func normalizeCodexToolSchemasForCallerBytes(body []byte, clientHeaders http.Header) []byte {
+	doc := ojson.NewDoc(body)
+	normalizeCodexToolSchemasForCallerDoc(doc, clientHeaders)
+	return doc.Bytes()
 }

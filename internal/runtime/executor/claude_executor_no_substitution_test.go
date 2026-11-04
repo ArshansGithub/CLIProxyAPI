@@ -9,13 +9,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
 	log "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
-	"github.com/tidwall/gjson"
 )
 
 const nsSessionID = "11111111-2222-4333-8444-555555555555"
@@ -59,7 +59,7 @@ func nsRun(t *testing.T, cfg *config.Config, payload string, headers http.Header
 	executor := NewClaudeExecutor(cfg)
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{"api_key": "key-test", "base_url": server.URL}}
 	p := []byte(payload)
-	model := gjson.GetBytes(p, "model").String()
+	model := ojson.GetBytes(p, "model").String()
 	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{Model: model, Payload: p}, cliproxyexecutor.Options{
 		SourceFormat: sdktranslator.FormatClaude, OriginalRequest: p, Headers: headers,
 	})
@@ -98,7 +98,7 @@ func TestStripFallbacks_NativeArrayStrippedHeaderKept(t *testing.T) {
 	hook := nsCaptureLogs(t)
 	betas := "claude-code-20250219,effort-2025-11-24,server-side-fallback-2026-06-01,fallback-credit-2026-06-01"
 	body, headers := nsRun(t, &config.Config{}, nsNativePayload(`[{"model":"claude-opus-4-8"}]`), nsNativeHeaders(betas))
-	if gjson.GetBytes(body, "fallbacks").Exists() {
+	if ojson.GetBytes(body, "fallbacks").Exists() {
 		t.Fatalf("fallbacks reached the wire: %s", body)
 	}
 	if got := headers.Get("Anthropic-Beta"); got != betas {
@@ -123,7 +123,7 @@ func TestStripFallbacks_NativeStringDefaultStripped(t *testing.T) {
 	SetStripFallbacks(true)
 	betas := "claude-code-20250219,server-side-fallback-2026-07-01"
 	body, headers := nsRun(t, &config.Config{}, nsNativePayload(`"default"`), nsNativeHeaders(betas))
-	if gjson.GetBytes(body, "fallbacks").Exists() {
+	if ojson.GetBytes(body, "fallbacks").Exists() {
 		t.Fatalf("fallbacks reached the wire: %s", body)
 	}
 	if got := headers.Get("Anthropic-Beta"); got != betas {
@@ -135,7 +135,7 @@ func TestStripFallbacks_NativeStringDefaultStripped(t *testing.T) {
 func TestStripFallbacks_OffPassesThrough(t *testing.T) {
 	SetStripFallbacks(false)
 	body, _ := nsRun(t, &config.Config{}, nsNativePayload(`[{"model":"claude-opus-4-8"}]`), nsNativeHeaders("claude-code-20250219,server-side-fallback-2026-06-01"))
-	if got := gjson.GetBytes(body, "fallbacks.0.model").String(); got != "claude-opus-4-8" {
+	if got := ojson.GetBytes(body, "fallbacks.0.model").String(); got != "claude-opus-4-8" {
 		t.Fatalf("switch off must pass fallbacks through, got %s", body)
 	}
 }
@@ -148,7 +148,7 @@ func TestStripFallbacks_CloakedInjectionUndoneAndBetasOmitted(t *testing.T) {
 	SetStripFallbacks(true)
 	payload := `{"model":"claude-opus-5-5","max_tokens":64,"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"do the task"}]}`
 	body, headers := nsRun(t, nsCloakCfg(), payload, http.Header{"User-Agent": {"curl/8.0"}})
-	if gjson.GetBytes(body, "fallbacks").Exists() {
+	if ojson.GetBytes(body, "fallbacks").Exists() {
 		t.Fatalf("cloak injected fallbacks survived the strip: %s", body)
 	}
 	for _, beta := range []string{"server-side-fallback-2026-06-01", "server-side-fallback-2026-07-01"} {
@@ -164,7 +164,7 @@ func TestStripFallbacks_OffCloakedInjectionStands(t *testing.T) {
 	SetStripFallbacks(false)
 	payload := `{"model":"claude-opus-5-5","max_tokens":64,"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"do the task"}]}`
 	body, _ := nsRun(t, nsCloakCfg(), payload, http.Header{"User-Agent": {"curl/8.0"}})
-	if got := gjson.GetBytes(body, "fallbacks.0.model").String(); got != "claude-opus-4-8" {
+	if got := ojson.GetBytes(body, "fallbacks.0.model").String(); got != "claude-opus-4-8" {
 		t.Fatalf("switch off: cloak should inject claude-opus-4-8, got %s", body)
 	}
 }
@@ -181,7 +181,7 @@ func TestStripFallbacks_PayloadRuleSettingFallbacksIsStripped(t *testing.T) {
 	}}
 	payload := `{"model":"claude-opus-5-5","max_tokens":64,"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"do the task"}]}`
 	body, _ := nsRun(t, cfg, payload, http.Header{"User-Agent": {"curl/8.0"}})
-	if gjson.GetBytes(body, "fallbacks").Exists() {
+	if ojson.GetBytes(body, "fallbacks").Exists() {
 		t.Fatalf("payload-rule fallbacks reached the wire: %s", body)
 	}
 }
@@ -214,7 +214,7 @@ func TestStripFallbacks_OffKeepsCallerFallbackBetas(t *testing.T) {
 	only07 := "claude-code-20250219,server-side-fallback-2026-07-01"
 	noBody := `{"model":"claude-opus-5","max_tokens":64,"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"do the task"}]}`
 	body, headers := nsRun(t, nsCloakCfg(), noBody, http.Header{"User-Agent": {"curl/8.0"}, "Anthropic-Beta": {only07}})
-	if gjson.GetBytes(body, "fallbacks").Exists() {
+	if ojson.GetBytes(body, "fallbacks").Exists() {
 		t.Fatalf("control: claude-opus-5 must not receive an injected fallback: %s", body)
 	}
 	got = headers.Get("Anthropic-Beta")
