@@ -286,6 +286,12 @@ func TestManagerExecute_ModelAliasRequestBlockedWhenTargetModelInQuotaCooldown(t
 			Fork:  true,
 		}},
 	})
+	// Fork: the effort-suffix slug parser splits an id ending in a level word
+	// unless the registry knows it. The pinned catalog no longer has this row,
+	// so register it before the auth's model states are keyed, as a live
+	// Antigravity account's entitlements would.
+	registry.GetGlobalRegistry().RegisterClient("test-alias-cooldown-flash-high", provider, []*registry.ModelInfo{{ID: targetModel}})
+	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient("test-alias-cooldown-flash-high") })
 
 	now := time.Now()
 	next := now.Add(1 * time.Hour)
