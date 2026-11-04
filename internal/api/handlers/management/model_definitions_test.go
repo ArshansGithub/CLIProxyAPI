@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/lockedbuild"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -157,6 +158,9 @@ func TestGetStaticModelDefinitions_RejectsUnknownChannel(t *testing.T) {
 }
 
 func TestRefreshModelDefinitions_UpdatesCatalogAndReportsChangedProviders(t *testing.T) {
+	if lockedbuild.Enabled {
+		t.Skip("locked build: the refresh route never fetches; see registry TestLockedOnDemandRefreshNeverFetches")
+	}
 	modelsDir := filepath.Join("..", "..", "..", "registry", "models")
 	baseModels, err := os.ReadFile(filepath.Join(modelsDir, "models.json"))
 	if err != nil {
