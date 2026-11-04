@@ -401,7 +401,7 @@ func applyThinkingDocCore(doc *ojson.Doc, docValid bool, sourceBody []byte, mode
 			callerConfig = extractSourceThinkingConfig(sourceBody, fromFormat)
 		}
 		if !hasThinkingConfig(callerConfig) {
-			callerConfig = extractThinkingConfig(body, providerFormat)
+			callerConfig = extractThinkingConfigDoc(doc, docValid, providerFormat)
 		}
 		warnSuffixRewrite(providerFormat, model, callerConfig, config)
 	} else {
@@ -449,7 +449,7 @@ func applyThinkingDocCore(doc *ojson.Doc, docValid bool, sourceBody []byte, mode
 		config.Level = mapConfiguredHighIntent(config.Level, modelInfo)
 		if !strings.EqualFold(string(requested), string(config.Level)) {
 			if RefuseUnsupportedEffort() && !isSameProviderFamily(fromFormat, providerFormat) {
-				return body, refuseEffort(providerFormat, modelInfo.ID, strings.ToLower(string(requested)), normalizeLevels(modelInfo.Thinking.Levels))
+				return modified, refuseEffort(providerFormat, modelInfo.ID, strings.ToLower(string(requested)), normalizeLevels(modelInfo.Thinking.Levels))
 			}
 			// The cross-family "as high as this model goes" rule changed the
 			// level. Say so at the default log level; the caller asked for a
@@ -638,10 +638,10 @@ func applyUserDefinedModelDoc(doc *ojson.Doc, docValid bool, modelInfo *registry
 		}).Debug("thinking: config from model suffix |")
 		callerConfig := sourceConfig
 		if !hasThinkingConfig(callerConfig) {
-			callerConfig = extractThinkingConfig(body, fromFormat)
+			callerConfig = extractThinkingConfigDoc(doc, docValid, fromFormat)
 		}
 		if !hasThinkingConfig(callerConfig) && fromFormat != toFormat {
-			callerConfig = extractThinkingConfig(body, toFormat)
+			callerConfig = extractThinkingConfigDoc(doc, docValid, toFormat)
 		}
 		warnSuffixRewrite(toFormat, modelID, callerConfig, config)
 	} else {

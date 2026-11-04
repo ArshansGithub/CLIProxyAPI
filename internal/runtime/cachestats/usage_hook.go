@@ -69,8 +69,8 @@ func observationFromRecord(record usage.Record) (Observation, bool) {
 		MaxTokens:             record.RequestMaxTokens,
 		CacheReadTokens:       detail.CacheReadTokens,
 		CacheCreationTokens:   detail.CacheCreationTokens,
-		CacheCreation5mTokens: detail.CacheCreation5mTokens,
-		CacheCreation1hTokens: detail.CacheCreation1hTokens,
+		CacheCreation5mTokens: splitTokens(detail.CacheCreation5mTokens),
+		CacheCreation1hTokens: splitTokens(detail.CacheCreation1hTokens),
 		CacheMissReason:       missReason,
 		CacheMissedTokens:     missedTokens,
 		IsProbe:               strings.TrimSpace(record.ProbeOrigin) != "",
@@ -134,4 +134,13 @@ func providerLabel(record usage.Record) string {
 // again replaces the previous registration.
 func RegisterUsagePlugin(store *Store) {
 	usage.RegisterNamedPlugin(UsagePluginName, usagePlugin{store: store})
+}
+
+// splitTokens reads one pool of the cache_creation split. Providers that report
+// no split leave it nil, which the store records as zero, its "no split" value.
+func splitTokens(pool *int64) int64 {
+	if pool == nil {
+		return 0
+	}
+	return *pool
 }

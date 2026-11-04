@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/thinking/provider/claude"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/thinking/provider/codex"
 	log "github.com/sirupsen/logrus"
 	logtest "github.com/sirupsen/logrus/hooks/test"
-	"github.com/tidwall/gjson"
 )
 
 // captureWarnings attaches a hook to the standard logger at Info level, the
@@ -72,7 +72,7 @@ func TestClaudeToCodexUltraOnGPT61SolClampsToMax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "max" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "max" {
 		t.Fatalf("reasoning.effort = %q, want max", got)
 	}
 	if warnings := warningsMentioning(hook, "level clamped"); len(warnings) != 1 {
@@ -93,7 +93,7 @@ func TestClaudeToCodexSupportedLevelsOnGPT61SolPassThrough(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: ApplyThinking returned error: %v", level, err)
 		}
-		if got := gjson.GetBytes(out, "reasoning.effort").String(); got != level {
+		if got := ojson.GetBytes(out, "reasoning.effort").String(); got != level {
 			t.Fatalf("%s: reasoning.effort = %q", level, got)
 		}
 		if warnings := warningsMentioning(hook, "thinking:"); len(warnings) != 0 {
@@ -112,7 +112,7 @@ func TestClaudeToCodexUltraClampsToMaxWithWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "max" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "max" {
 		t.Fatalf("reasoning.effort = %q, want max", got)
 	}
 	warnings := warningsMentioning(hook, "level clamped")
@@ -136,7 +136,7 @@ func TestClaudeToCodexMaxRemappedToXHighWithWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "xhigh" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "xhigh" {
 		t.Fatalf("reasoning.effort = %q, want xhigh", got)
 	}
 	warnings := warningsMentioning(hook, "level remapped")
@@ -159,7 +159,7 @@ func TestCodexConfigurationUpdatesStrippedWithWarning(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "input.#").Int(); got != 1 {
+	if got := ojson.GetBytes(out, "input.#").Int(); got != 1 {
 		t.Fatalf("input length = %d, want 1 (update stripped)", got)
 	}
 	warnings := warningsMentioning(hook, "configuration_update")

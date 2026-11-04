@@ -3,7 +3,7 @@ package openai
 import (
 	"testing"
 
-	"github.com/tidwall/gjson"
+	"github.com/MoeForge/moego/ojson"
 )
 
 // Reproduces a Codex Desktop subagent spawned after the parent thread compacted.
@@ -36,7 +36,7 @@ func TestPrewarmToolsSurviveCompactionReplayBypass(t *testing.T) {
 	if errMsg != nil {
 		t.Fatalf("continuation normalize: %v", errMsg.Error)
 	}
-	input := gjson.GetBytes(normalized, "input").Array()
+	input := ojson.GetBytes(normalized, "input").Array()
 	hasTools := false
 	for _, item := range input {
 		if item.Get("type").String() == "additional_tools" {

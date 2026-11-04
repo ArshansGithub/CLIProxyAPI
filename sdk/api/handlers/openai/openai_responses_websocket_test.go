@@ -5118,7 +5118,7 @@ func TestResponsesWebsocketLocalPrewarmResetsNativeTransport(t *testing.T) {
 					if errRead != nil {
 						t.Fatalf("read websocket response: %v", errRead)
 					}
-					switch gjson.GetBytes(payload, "type").String() {
+					switch ojson.GetBytes(payload, "type").String() {
 					case wsEventTypeError:
 						t.Fatalf("unexpected websocket error: %s", payload)
 					case wsEventTypeCompleted:
@@ -5128,7 +5128,7 @@ func TestResponsesWebsocketLocalPrewarmResetsNativeTransport(t *testing.T) {
 			}
 			exchange(fmt.Sprintf(`{"type":"response.create","model":%q,"input":[{"type":"message","role":"user","content":"Start the native conversation."}]}`, nativeModel))
 			prewarm := exchange(fmt.Sprintf(`{"type":"response.create","model":%q,"generate":false,"input":[%s]}`, httpModel, prefix))
-			prewarmID := gjson.GetBytes(prewarm, "response.id").String()
+			prewarmID := ojson.GetBytes(prewarm, "response.id").String()
 			if !strings.HasPrefix(prewarmID, "resp_prewarm_") {
 				t.Fatalf("expected local prewarm response: %s", prewarm)
 			}
@@ -5148,14 +5148,14 @@ func TestResponsesWebsocketLocalPrewarmResetsNativeTransport(t *testing.T) {
 				t.Fatalf("upstream calls = %d, want %d", len(payloads), wantCalls)
 			}
 			forwarded := payloads[wantCalls-1]
-			if gjson.GetBytes(forwarded, "previous_response_id").Exists() || gjson.GetBytes(forwarded, "generate").Exists() {
+			if ojson.GetBytes(forwarded, "previous_response_id").Exists() || ojson.GetBytes(forwarded, "generate").Exists() {
 				t.Errorf("local prewarm metadata leaked upstream: %s", forwarded)
 			}
-			assertJSONSemanticallyEqual(t, []byte(gjson.GetBytes(forwarded, "input").Raw), "["+prefix+","+delta+"]")
+			assertJSONSemanticallyEqual(t, []byte(ojson.GetBytes(forwarded, "input").Raw), "["+prefix+","+delta+"]")
 
 			// After reconstruction, subsequent turns must use the newly established transport.
 			const nextUser = `{"type":"message","role":"user","content":"Run whoami."}`
-			nextResponseID := gjson.GetBytes(completed, "response.id").String()
+			nextResponseID := ojson.GetBytes(completed, "response.id").String()
 			exchange(fmt.Sprintf(`{"type":"response.create","previous_response_id":%q,"input":[%s]}`, nextResponseID, nextUser))
 			payloads = targetExecutor.Payloads()
 			if len(payloads) != wantCalls+1 {
@@ -5164,7 +5164,7 @@ func TestResponsesWebsocketLocalPrewarmResetsNativeTransport(t *testing.T) {
 			next := payloads[wantCalls]
 			wantNextInput := "[" + nextUser + "]"
 			if tc.model == nativeModel {
-				if got := gjson.GetBytes(next, "previous_response_id").String(); got != nextResponseID {
+				if got := ojson.GetBytes(next, "previous_response_id").String(); got != nextResponseID {
 					t.Fatalf("native continuation ID = %q, want %q", got, nextResponseID)
 				}
 				flags := nativeExecutor.RequiredUpstreamWebsocketFlags()
@@ -5172,12 +5172,12 @@ func TestResponsesWebsocketLocalPrewarmResetsNativeTransport(t *testing.T) {
 					t.Fatalf("native websocket requirements = %v, want [false false true]", flags)
 				}
 			} else {
-				if gjson.GetBytes(next, "previous_response_id").Exists() {
+				if ojson.GetBytes(next, "previous_response_id").Exists() {
 					t.Fatalf("HTTP continuation forwarded a response ID: %s", next)
 				}
-				wantNextInput = "[" + prefix + "," + delta + "," + gjson.GetBytes(completed, "response.output.0").Raw + "," + nextUser + "]"
+				wantNextInput = "[" + prefix + "," + delta + "," + ojson.GetBytes(completed, "response.output.0").Raw + "," + nextUser + "]"
 			}
-			assertJSONSemanticallyEqual(t, []byte(gjson.GetBytes(next, "input").Raw), wantNextInput)
+			assertJSONSemanticallyEqual(t, []byte(ojson.GetBytes(next, "input").Raw), wantNextInput)
 		})
 	}
 }

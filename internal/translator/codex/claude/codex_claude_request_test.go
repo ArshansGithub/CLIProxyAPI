@@ -1070,7 +1070,7 @@ func TestConvertClaudeRequestToCodex_OutputConfigFormat(t *testing.T) {
 		}`)
 
 		translated, _ := ConvertClaudeRequestToCodex("gpt-6.1-sol", payload, false)
-		root := gjson.ParseBytes(translated)
+		root := ojson.ParseBytes(translated)
 		if got := root.Get("reasoning.effort").String(); got != "max" {
 			t.Errorf("expected reasoning.effort to be 'max', got %q", got)
 		}
@@ -1085,7 +1085,7 @@ func TestConvertClaudeRequestToCodex_OutputConfigFormat(t *testing.T) {
 		}`)
 
 		translated, _ := ConvertClaudeRequestToCodex("gpt-6.1-sol", payload, false)
-		root := gjson.ParseBytes(translated)
+		root := ojson.ParseBytes(translated)
 		if got := root.Get("reasoning.effort").String(); got != "medium" {
 			t.Errorf("expected reasoning.effort to default to 'medium', got %q", got)
 		}

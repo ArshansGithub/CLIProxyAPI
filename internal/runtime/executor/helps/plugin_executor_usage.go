@@ -184,6 +184,12 @@ func MergeStreamUsageDetail(existing, update usage.Detail) usage.Detail {
 	if merged.ResponseServiceTier == "" {
 		merged.ResponseServiceTier = existing.ResponseServiceTier
 	}
+	// Claude reports cache_miss_reason only on message_start; message_delta
+	// carries the totals and must not erase it.
+	if merged.CacheMissReason == "" {
+		merged.CacheMissReason = existing.CacheMissReason
+		merged.CacheMissedTokens = existing.CacheMissedTokens
+	}
 
 	outputExcludesReasoning, knownOutput := detailOutputExcludesReasoning(update)
 	if !knownOutput {

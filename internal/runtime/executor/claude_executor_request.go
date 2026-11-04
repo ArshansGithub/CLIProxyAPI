@@ -1349,7 +1349,7 @@ func applyClaudeHeadersWithNativeProfile(
 		// would turn passthrough into cloaking, so it returns before the uncloak
 		// strip and the native beta gating below.
 		if confirmedClaudeCode {
-			if gjson.GetBytes(body, "thinking.block_binding").Exists() {
+			if ojson.GetBytes(body, "thinking.block_binding").Exists() {
 				baseBetas = withClaudeBetaAppended(baseBetas, claudeThinkingBindingBeta)
 			}
 			if strings.TrimSpace(baseBetas) == "" {

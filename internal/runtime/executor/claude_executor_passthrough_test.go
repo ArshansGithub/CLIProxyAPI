@@ -8,11 +8,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
-	"github.com/tidwall/gjson"
 )
 
 // A confirmed native Claude Code client is a passthrough client: the proxy must
@@ -89,7 +89,7 @@ func TestClaudeExecutor_ConfirmedNativeSubagentAndProbeKeepCallerTTLAndBetas(t *
 			if errExecute != nil {
 				t.Fatalf("Execute() error = %v", errExecute)
 			}
-			if got := gjson.GetBytes(seenBody, "system.0.cache_control.ttl").String(); got != "1h" {
+			if got := ojson.GetBytes(seenBody, "system.0.cache_control.ttl").String(); got != "1h" {
 				t.Fatalf("system.0.cache_control.ttl = %q, want caller's 1h preserved; body=%s", got, seenBody)
 			}
 			if got, want := seenHeaders.Get("Anthropic-Beta"), tt.headers.Get("Anthropic-Beta"); got != want {
@@ -172,7 +172,7 @@ func TestClaudeExecutor_UnconfirmedProbeStillStrippedToNativeWire(t *testing.T) 
 			if len(seenBody) == 0 {
 				t.Fatal("expected the executor to send an upstream request")
 			}
-			for _, block := range gjson.GetBytes(seenBody, "system").Array() {
+			for _, block := range ojson.GetBytes(seenBody, "system").Array() {
 				if block.Get("cache_control.ttl").Exists() {
 					t.Fatalf("unconfirmed caller must have ttl stripped, body=%s", seenBody)
 				}

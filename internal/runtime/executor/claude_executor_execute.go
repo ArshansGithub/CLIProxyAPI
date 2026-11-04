@@ -386,11 +386,6 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		}
 		lines := bytes.Split(data, []byte("\n"))
 		var eventBuf bytes.Buffer
-		// message_start carries the 5m/1h cache_creation split and the
-		// cache_miss_reason diagnostics; message_delta carries the totals. Carry
-		// the annotation forward onto every detail before it enters the buffer so
-		// upstream's aggregated trailing usage chunk still reports both.
-		var cacheAnnotation helps.ClaudeCacheAnnotation
 		for i, line := range lines {
 			eventBuf.Write(line)
 			eventBuf.WriteByte('\n')
@@ -399,12 +394,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 				eventBuf.Reset()
 			}
 			reporter.ObserveResponseModel(line)
-			if annotation, ok := helps.ParseClaudeCacheAnnotation(line); ok {
-				cacheAnnotation = annotation
-			}
-			if detail, ok := helps.ParseClaudeStreamUsage(line); ok {
-				helps.ObserveMergedStreamUsage(&streamUsage, cacheAnnotation.Apply(detail))
-			}
+			streamUsage.ObserveClaudeStream(line)
 			restoredLine, errRestore := restoreClaudeOAuthToolNamesFromStreamLine(line, oauthToolNamesReverseMap)
 			if errRestore != nil {
 				errRestore = fmt.Errorf("restore Claude OAuth tool name from streaming response: %w", errRestore)
@@ -468,7 +458,7 @@ func (e *ClaudeExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, r
 		StartedAt:           requestStartedAt,
 		// The baseline a later probe is measured against: a probe that reads far
 		// less than the real request did refreshed only part of the prefix.
-		CacheReadInputTokens: gjson.GetBytes(data, "usage.cache_read_input_tokens").Int(),
+		CacheReadInputTokens: ojson.GetBytes(data, "usage.cache_read_input_tokens").Int(),
 	})
 	resp = cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}
 	return resp, nil
