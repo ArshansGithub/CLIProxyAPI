@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/MoeForge/moego/base64"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -630,6 +631,7 @@ func TestAntigravityStreamKeepsTrailingTextFunctionResponse(t *testing.T) {
 }
 
 func TestAntigravityStreamPrependsLeadingUserAfterReplayInsertsFunctionCall(t *testing.T) {
+	registerAntigravityFlashHigh(t)
 	cache.ClearAntigravityReasoningReplayCache()
 	t.Cleanup(cache.ClearAntigravityReasoningReplayCache)
 
@@ -975,6 +977,7 @@ func TestAntigravityExecutorCountTokensSanitizesGeminiToolHistory(t *testing.T) 
 }
 
 func TestAntigravityExecutorCountTokensReconstructsCompactedClaudeToolCall(t *testing.T) {
+	registerAntigravityFlashHigh(t)
 	cache.ClearAntigravityReasoningReplayCache()
 	t.Cleanup(cache.ClearAntigravityReasoningReplayCache)
 
@@ -1330,4 +1333,14 @@ func TestAntigravityExecutorCountTokensStripsStatefulFields(t *testing.T) {
 	if ojson.GetBytes(upstreamBody, "request.sessionId").Exists() {
 		t.Fatalf("upstream countTokens body retained request.sessionId: %s", upstreamBody)
 	}
+}
+
+// registerAntigravityFlashHigh registers gemini-3.6-flash-high the way an
+// Antigravity account's entitlements would. The pinned catalog no longer has
+// the row, so without it the fork's effort-suffix slug parser reads "-high" as
+// an effort and the replay cache key changes.
+func registerAntigravityFlashHigh(t *testing.T) {
+	t.Helper()
+	registry.GetGlobalRegistry().RegisterClient("test-antigravity-flash-high", "antigravity", []*registry.ModelInfo{{ID: "gemini-3.6-flash-high", OwnedBy: "antigravity", Type: "antigravity"}})
+	t.Cleanup(func() { registry.GetGlobalRegistry().UnregisterClient("test-antigravity-flash-high") })
 }

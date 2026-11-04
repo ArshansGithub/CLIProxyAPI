@@ -152,7 +152,7 @@ func (u *catalogUpdater) refreshOnDemand(ctx context.Context, fallbackSource str
 	if displaySource == "" && len(defaultURLs) > 0 {
 		displaySource = defaultURLs[0]
 	}
-	if source == "disabled" || source == embeddedCatalogSource {
+	if !remoteModelRefreshEnabled || source == "disabled" || source == embeddedCatalogSource {
 		u.mu.Unlock()
 		return CatalogSourceStatus{
 			Source:  displaySource,

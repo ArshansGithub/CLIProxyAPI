@@ -133,6 +133,9 @@ func TestCatalogRefreshKeepsLastValidData(t *testing.T) {
 }
 
 func TestRefreshModelCatalogsOnDemand(t *testing.T) {
+	if !remoteModelRefreshEnabled {
+		t.Skip("locked build: on-demand refresh never fetches; see TestLockedOnDemandRefreshNeverFetches")
+	}
 	oldModels := getModels()
 	oldCodex, _ := GetCodexClientModelsSnapshot()
 	oldDevin, _ := GetDevinModelsSnapshot()

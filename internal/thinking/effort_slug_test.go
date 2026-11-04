@@ -3,11 +3,11 @@ package thinking_test
 import (
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/thinking/provider/claude"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/thinking/provider/codex"
-	"github.com/tidwall/gjson"
 )
 
 // Effort-suffixed slugs: "claude-opus-5-5-medium" is "claude-opus-5-5(medium)"
@@ -33,7 +33,7 @@ func TestParseSuffixHyphenLevelOnCatalogModel(t *testing.T) {
 }
 
 func TestParseSuffixHyphenKeepsRealCatalogIDs(t *testing.T) {
-	for _, id := range []string{"gemini-3.1-pro-low", "gpt-oss-120b-medium"} {
+	for _, id := range []string{"claude-opus-5-5-high", "gpt-oss-120b-medium"} {
 		if registry.LookupStaticModelInfo(id) == nil {
 			t.Fatalf("fixture %s is no longer a catalog model; pick another real id ending in a level word", id)
 		}
@@ -89,7 +89,7 @@ func TestClaudeSlugForcesEffortAndWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "output_config.effort").String(); got != "medium" {
+	if got := ojson.GetBytes(out, "output_config.effort").String(); got != "medium" {
 		t.Fatalf("output_config.effort = %q, want medium", got)
 	}
 	warnings := warningsMentioning(hook, "rewritten by model suffix")
@@ -111,7 +111,7 @@ func TestCodexSlugForcesEffortAndWarns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "high" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "high" {
 		t.Fatalf("reasoning.effort = %q, want high", got)
 	}
 	warnings := warningsMentioning(hook, "rewritten by model suffix")
@@ -132,7 +132,7 @@ func TestSlugWithoutCallerEffortWarnsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "output_config.effort").String(); got != "medium" {
+	if got := ojson.GetBytes(out, "output_config.effort").String(); got != "medium" {
 		t.Fatalf("output_config.effort = %q, want medium", got)
 	}
 	if warnings := warningsMentioning(hook, "thinking:"); len(warnings) != 0 {
@@ -148,7 +148,7 @@ func TestSlugMatchingCallerEffortWarnsNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "high" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "high" {
 		t.Fatalf("reasoning.effort = %q, want high", got)
 	}
 	if warnings := warningsMentioning(hook, "thinking:"); len(warnings) != 0 {
@@ -164,7 +164,7 @@ func TestBareSlugStillHonoursCallerEffort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyThinking returned error: %v", err)
 	}
-	if got := gjson.GetBytes(out, "reasoning.effort").String(); got != "low" {
+	if got := ojson.GetBytes(out, "reasoning.effort").String(); got != "low" {
 		t.Fatalf("reasoning.effort = %q, want low", got)
 	}
 	if warnings := warningsMentioning(hook, "thinking:"); len(warnings) != 0 {
