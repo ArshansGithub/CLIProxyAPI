@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	internalconfig "github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/thinking"
+	internalconfig "github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
 )
 
 const oauthModelAliasesAttributeKey = "model_aliases"
@@ -89,7 +89,55 @@ func (m *Manager) SetOAuthModelAlias(aliases map[string][]internalconfig.OAuthMo
 	if table == nil {
 		table = &oauthModelAliasTable{}
 	}
-	m.oauthModelAlias.Store(table)
+	m.publishOAuthModelAliasAndReconcileStates(nil, table)
+}
+
+type oauthResolvedAliasRoute struct {
+	aliasKey  string
+	targetKey string
+}
+
+func (m *Manager) configuredOAuthAliasRoutes(auth *Auth) []oauthResolvedAliasRoute {
+	if m == nil || auth == nil {
+		return nil
+	}
+	channel := modelAliasChannel(auth)
+	if channel == "" {
+		return nil
+	}
+	seenAliases := make(map[string]struct{})
+	var routes []oauthResolvedAliasRoute
+	addAlias := func(alias string) {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			return
+		}
+		aliasLookup := canonicalModelLookupKey(alias)
+		if aliasLookup == "" {
+			return
+		}
+		if _, exists := seenAliases[aliasLookup]; exists {
+			return
+		}
+		seenAliases[aliasLookup] = struct{}{}
+		aliasKey := canonicalModelKey(alias)
+		if targetKey := m.selectionModelKeyForAuth(auth, alias); targetKey != "" && !sameCanonicalModelKey(aliasKey, targetKey) {
+			routes = append(routes, oauthResolvedAliasRoute{
+				aliasKey:  aliasKey,
+				targetKey: targetKey,
+			})
+		}
+	}
+	for _, entry := range OAuthModelAliasesFromAttributes(authAttributes(auth)) {
+		addAlias(entry.Alias)
+	}
+	raw := m.oauthModelAlias.Load()
+	if table, _ := raw.(*oauthModelAliasTable); table != nil && table.reverse != nil {
+		for _, entry := range table.reverse[channel] {
+			addAlias(entry.configAlias)
+		}
+	}
+	return routes
 }
 
 // applyOAuthModelAlias resolves the upstream model from OAuth model alias.
@@ -128,6 +176,13 @@ func preserveResolvedModelSuffix(resolved string, requestResult thinking.SuffixR
 		return resolved
 	}
 	if requestResult.HasSuffix && requestResult.RawSuffix != "" {
+		if requestResult.Hyphenated {
+			// An effort-suffixed slug keeps its spelling so the log names the
+			// model the caller asked for ("gpt-6.1-sol-high", not "gpt-6.1-sol(high)").
+			if candidate := resolved + "-" + requestResult.RawSuffix; thinking.ParseSuffix(candidate).HasSuffix {
+				return candidate
+			}
+		}
 		return resolved + "(" + requestResult.RawSuffix + ")"
 	}
 	return resolved
@@ -471,7 +526,7 @@ func modelAliasChannel(auth *Auth) string {
 // and auth kind. Returns empty string if the provider/authKind combination doesn't support
 // OAuth model alias (e.g., API key authentication).
 //
-// Built-in channels: vertex, aistudio, antigravity, claude, codex, kimi.
+// Built-in channels: vertex, aistudio, antigravity, claude, codex, kimi, xai, meta.
 // Plugin OAuth providers use their normalized provider key as the channel.
 func OAuthModelAliasChannel(provider, authKind string) string {
 	provider = strings.ToLower(strings.TrimSpace(provider))
@@ -488,7 +543,7 @@ func OAuthModelAliasChannel(provider, authKind string) string {
 		return "claude"
 	case "codex":
 		return "codex"
-	case "aistudio", "antigravity", "kimi":
+	case "aistudio", "antigravity", "kimi", "kimi-ai", "kimi.ai", "kimi.com", "xai", "meta":
 		return provider
 	default:
 		return provider

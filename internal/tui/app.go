@@ -18,6 +18,7 @@ const (
 	tabAuthFiles
 	tabAPIKeys
 	tabOAuth
+	tabCache
 	tabLogs
 )
 
@@ -39,6 +40,7 @@ type App struct {
 	auth      authTabModel
 	keys      keysTabModel
 	oauth     oauthTabModel
+	cache     cacheTabModel
 	logs      logsTabModel
 
 	client *Client
@@ -48,7 +50,7 @@ type App struct {
 	ready  bool
 
 	// Track which tabs have been initialized (fetched data)
-	initialized [6]bool
+	initialized [7]bool
 }
 
 type authConnectMsg struct {
@@ -56,8 +58,13 @@ type authConnectMsg struct {
 	err error
 }
 
-// NewApp creates the root TUI application model.
+// NewApp creates the root TUI application model targeting localhost on the given port.
 func NewApp(port int, secretKey string, hook *LogHook) App {
+	return NewAppWithBaseURL(fmt.Sprintf("http://127.0.0.1:%d", port), secretKey, hook)
+}
+
+// NewAppWithBaseURL creates the root TUI application model targeting the specified management base URL.
+func NewAppWithBaseURL(baseURL string, secretKey string, hook *LogHook) App {
 	standalone := hook != nil
 	authRequired := !standalone
 	ti := textinput.New()
@@ -67,7 +74,7 @@ func NewApp(port int, secretKey string, hook *LogHook) App {
 	ti.SetValue(strings.TrimSpace(secretKey))
 	ti.Focus()
 
-	client := NewClient(port, secretKey)
+	client := NewClientWithBaseURL(baseURL, secretKey)
 	app := App{
 		activeTab:     tabDashboard,
 		standalone:    standalone,
@@ -79,9 +86,10 @@ func NewApp(port int, secretKey string, hook *LogHook) App {
 		auth:          newAuthTabModel(client),
 		keys:          newKeysTabModel(client),
 		oauth:         newOAuthTabModel(client),
+		cache:         newCacheTabModel(client),
 		logs:          newLogsTabModel(client, hook),
 		client:        client,
-		initialized: [6]bool{
+		initialized: [7]bool{
 			tabDashboard: true,
 			tabLogs:      true,
 		},
@@ -89,7 +97,7 @@ func NewApp(port int, secretKey string, hook *LogHook) App {
 
 	app.refreshTabs()
 	if authRequired {
-		app.initialized = [6]bool{}
+		app.initialized = [7]bool{}
 	}
 	app.setAuthInputPrompt()
 	return app
@@ -125,6 +133,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.auth.SetSize(contentW, contentH)
 		a.keys.SetSize(contentW, contentH)
 		a.oauth.SetSize(contentW, contentH)
+		a.cache.SetSize(contentW, contentH)
 		a.logs.SetSize(contentW, contentH)
 		return a, nil
 
@@ -138,7 +147,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.authenticated = true
 		a.logsEnabled = a.standalone || isLogsEnabledFromConfig(msg.cfg)
 		a.refreshTabs()
-		a.initialized = [6]bool{}
+		a.initialized = [7]bool{}
 		a.initialized[tabDashboard] = true
 		cmds := []tea.Cmd{a.dashboard.Init()}
 		if a.logsEnabled {
@@ -254,6 +263,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.keys, cmd = a.keys.Update(msg)
 	case tabOAuth:
 		a.oauth, cmd = a.oauth.Update(msg)
+	case tabCache:
+		a.cache, cmd = a.cache.Update(msg)
 	case tabLogs:
 		a.logs, cmd = a.logs.Update(msg)
 	}
@@ -316,6 +327,8 @@ func (a *App) initTabIfNeeded(_ int) tea.Cmd {
 		return a.keys.Init()
 	case tabOAuth:
 		return a.oauth.Init()
+	case tabCache:
+		return a.cache.Init()
 	case tabLogs:
 		if !a.logsEnabled {
 			return nil
@@ -352,6 +365,8 @@ func (a App) View() string {
 		sb.WriteString(a.keys.View())
 	case tabOAuth:
 		sb.WriteString(a.oauth.View())
+	case tabCache:
+		sb.WriteString(a.cache.View())
 	case tabLogs:
 		if a.logsEnabled {
 			sb.WriteString(a.logs.View())
@@ -483,13 +498,19 @@ func (a App) connectWithPassword(password string) tea.Cmd {
 	}
 }
 
-// Run starts the TUI application.
+// Run starts the TUI application targeting localhost on the given port.
 // output specifies where bubbletea renders. If nil, defaults to os.Stdout.
 func Run(port int, secretKey string, hook *LogHook, output io.Writer) error {
+	return RunWithBaseURL(fmt.Sprintf("http://127.0.0.1:%d", port), secretKey, hook, output)
+}
+
+// RunWithBaseURL starts the TUI application targeting the specified management base URL.
+// output specifies where bubbletea renders. If nil, defaults to os.Stdout.
+func RunWithBaseURL(baseURL string, secretKey string, hook *LogHook, output io.Writer) error {
 	if output == nil {
 		output = os.Stdout
 	}
-	app := NewApp(port, secretKey, hook)
+	app := NewAppWithBaseURL(baseURL, secretKey, hook)
 	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithOutput(output))
 	_, err := p.Run()
 	return err
@@ -516,6 +537,10 @@ func (a App) broadcastToAllTabs(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 	}
 	a.oauth, cmd = a.oauth.Update(msg)
+	if cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	a.cache, cmd = a.cache.Update(msg)
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}

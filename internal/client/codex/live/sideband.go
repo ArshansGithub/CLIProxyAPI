@@ -14,13 +14,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/clienterror"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
-	coreexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/proxyutil"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/clienterror"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/egress"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/logging"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/api/handlers"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
+	coreexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/proxyutil"
 	log "github.com/sirupsen/logrus"
 	xproxy "golang.org/x/net/proxy"
 )
@@ -45,6 +47,8 @@ type liveSession struct {
 	callID                string
 	authID                string
 	model                 string
+	sessionID             string
+	parentSessionID       string
 	ownerPrincipal        string
 	ownerProvider         string
 	clientSecretPrincipal string
@@ -354,6 +358,15 @@ func (h *Handler) HandleSideband(c *gin.Context) {
 
 	ctx := context.WithValue(c.Request.Context(), "gin", c)
 	ctx = coreexecutor.WithDownstreamWebsocket(ctx)
+	ctx = handlers.EnrichContextWithSessionHierarchy(ctx, c.Request.Header, nil, map[string]any{
+		coreexecutor.ExecutionSessionMetadataKey: session.callID,
+	})
+	if session.sessionID != "" {
+		meta := logging.GetClientRequestMetadata(ctx)
+		meta.SessionID = session.sessionID
+		meta.ParentSessionID = session.parentSessionID
+		ctx = logging.WithClientRequestMetadata(ctx, meta)
+	}
 	var selection *auth.HomeDispatchSelection
 	var selected *auth.Auth
 	var errSelect error
@@ -378,6 +391,19 @@ func (h *Handler) HandleSideband(c *gin.Context) {
 	if errSelect != nil {
 		writeSelectionError(c, errSelect)
 		return
+	}
+	if selection != nil && selection.CanonicalSessionID != "" {
+		meta := logging.GetClientRequestMetadata(ctx)
+		meta.SessionID = selection.CanonicalSessionID
+		if selection.ParentSessionID != "" {
+			meta.ParentSessionID = selection.ParentSessionID
+		} else {
+			meta.ParentSessionID = ""
+		}
+		if meta.SessionID == meta.ParentSessionID {
+			meta.ParentSessionID = ""
+		}
+		ctx = logging.WithClientRequestMetadata(ctx, meta)
 	}
 	if selected == nil {
 		writeLiveError(c, http.StatusServiceUnavailable, "Codex auth unavailable")
@@ -682,7 +708,7 @@ func proxyURLForAuth(cfg *config.Config, selected *auth.Auth) string {
 }
 
 func newSidebandDialer(proxyURL string) *websocket.Dialer {
-	dialer := &websocket.Dialer{Proxy: http.ProxyFromEnvironment}
+	dialer := egress.GuardWebsocketDialer(&websocket.Dialer{Proxy: http.ProxyFromEnvironment}, "codex.liveSideband")
 	if strings.TrimSpace(proxyURL) == "" {
 		return dialer
 	}
@@ -694,7 +720,7 @@ func newSidebandDialer(proxyURL string) *websocket.Dialer {
 	}
 	switch setting.Mode {
 	case proxyutil.ModeDirect:
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.liveSideband")
 		return dialer
 	case proxyutil.ModeProxy:
 	default:
@@ -709,12 +735,13 @@ func newSidebandDialer(proxyURL string) *websocket.Dialer {
 			password, _ := setting.URL.User.Password()
 			proxyAuth = &xproxy.Auth{User: username, Password: password}
 		}
-		socksDialer, errSOCKS5 := xproxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, xproxy.Direct)
+		// The forward dialer connects to the proxy host, so it carries the egress check.
+		socksDialer, errSOCKS5 := xproxy.SOCKS5("tcp", setting.URL.Host, proxyAuth, egress.GuardDialer(xproxy.Direct, "codex.liveSideband socks5 proxy"))
 		if errSOCKS5 != nil {
 			log.Errorf("codex live sideband: create SOCKS5 dialer failed: %v", errSOCKS5)
 			return dialer
 		}
-		dialer.Proxy = nil
+		dialer.Proxy = egress.WrapProxyFunc(nil, "codex.liveSideband")
 		if contextDialer, ok := socksDialer.(xproxy.ContextDialer); ok {
 			dialer.NetDialContext = contextDialer.DialContext
 		} else {
@@ -723,7 +750,7 @@ func newSidebandDialer(proxyURL string) *websocket.Dialer {
 			}
 		}
 	case "http", "https":
-		dialer.Proxy = http.ProxyURL(setting.URL)
+		dialer.Proxy = egress.WrapProxyFunc(http.ProxyURL(setting.URL), "codex.liveSideband")
 	default:
 		log.Errorf("codex live sideband: unsupported proxy scheme: %s", setting.URL.Scheme)
 	}

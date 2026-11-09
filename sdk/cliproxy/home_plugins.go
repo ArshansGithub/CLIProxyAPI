@@ -11,10 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/home"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/homeplugins"
-	sdkpluginstore "github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginstore"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/home"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/homeplugins"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/lockedbuild"
+	sdkpluginstore "github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginstore"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v3"
 )
@@ -22,8 +23,9 @@ import (
 const homePluginStatusReportTimeout = 10 * time.Second
 
 type homePluginStatusWork struct {
-	cfg    *config.Config
-	report homeplugins.SyncReport
+	cfg              *config.Config
+	report           homeplugins.SyncReport
+	needsLoadMarking bool
 }
 
 type homePluginTaskWork struct {
@@ -51,6 +53,13 @@ func (s *Service) syncHomePlugins(ctx context.Context, cfg *config.Config) (home
 func (s *Service) syncHomePluginsWithClient(ctx context.Context, cfg *config.Config, client *home.Client) (homeplugins.SyncReport, string, bool, error) {
 	if s == nil || cfg == nil || !cfg.Home.Enabled {
 		return homeplugins.SyncReport{}, "", false, nil
+	}
+	if lockedbuild.Enabled {
+		// Home plugin sync downloads and installs artifacts the Home server
+		// names. The locked build never runs Home mode, and this is the one
+		// other entry to that download path, so it is closed here as well.
+		errLocked := errors.New("locked build: home plugin sync is disabled")
+		return homeplugins.CompletedSyncReport(homeplugins.CurrentPlatform(), errLocked), "", false, errLocked
 	}
 	syncKey := homePluginSyncKey(cfg)
 	if syncKey != "" {
@@ -212,7 +221,13 @@ func (s *Service) finalizeHomePluginWork(ctx context.Context, client *home.Clien
 		}
 	}
 	for work.nextStatus < len(work.statusWork) {
-		status := work.statusWork[work.nextStatus]
+		status := &work.statusWork[work.nextStatus]
+		if status.needsLoadMarking {
+			if errLoad := homeplugins.MarkLoadResults(&status.report, s.pluginHost); errLoad != nil {
+				log.Warnf("failed to load home plugins: %v", errLoad)
+			}
+			status.needsLoadMarking = false
+		}
 		if errReport := s.pushHomePluginStatusWithClient(ctx, status.cfg, status.report, client); errReport != nil {
 			return errReport
 		}

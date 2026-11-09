@@ -4,7 +4,10 @@
 // thinking configurations across various AI providers (Claude, Gemini, OpenAI, Codex, Antigravity, Kimi, xAI).
 package thinking
 
-import "github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
+import (
+	"github.com/MoeForge/moego/ojson"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
+)
 
 // ThinkingMode represents the type of thinking configuration mode.
 type ThinkingMode int
@@ -57,6 +60,9 @@ const (
 	// LevelMax sets maximum thinking effort.
 	// This is currently used by Claude 4.6 adaptive thinking (opus supports "max").
 	LevelMax ThinkingLevel = "max"
+	// LevelUltra is the Codex tier above max ("maximum reasoning with automatic
+	// task delegation"), advertised by GPT-6 Sol/Astra and GPT-5.6 Sol/Terra.
+	LevelUltra ThinkingLevel = "ultra"
 )
 
 // ThinkingConfig represents a unified thinking configuration.
@@ -92,6 +98,11 @@ type SuffixResult struct {
 	// RawSuffix is the content inside the parentheses, without the parentheses.
 	// Empty string if HasSuffix is false.
 	RawSuffix string
+
+	// Hyphenated is true when the suffix came from an effort-suffixed slug
+	// ("claude-opus-5-5-medium") rather than the parenthesised form, so a
+	// layer that re-attaches the suffix can keep the caller's spelling.
+	Hyphenated bool
 }
 
 // ProviderApplier defines the interface for provider-specific thinking configuration application.
@@ -116,4 +127,11 @@ type ProviderApplier interface {
 	//   - Modified request body JSON
 	//   - ThinkingError if the configuration is invalid or unsupported
 	Apply(body []byte, config ThinkingConfig, modelInfo *registry.ModelInfo) ([]byte, error)
+}
+
+// ProviderDocApplier extends ProviderApplier to mutate an *ojson.Doc in place
+// without intermediate byte-slice serialization.
+type ProviderDocApplier interface {
+	ProviderApplier
+	ApplyDoc(doc *ojson.Doc, config ThinkingConfig, modelInfo *registry.ModelInfo) error
 }

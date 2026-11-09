@@ -1,4 +1,4 @@
-//go:build !cgo && !windows
+//go:build !cgo && !windows && !locked
 
 package pluginhost
 
@@ -13,3 +13,5 @@ func (unsupportedLoader) Open(file pluginFile, host *Host) (pluginClient, error)
 func defaultPluginLoader() pluginLoader {
 	return unsupportedLoader{}
 }
+
+func cleanupStaleShadowPlugins(string, []pluginFile) {}

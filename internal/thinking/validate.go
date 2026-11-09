@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -67,7 +67,7 @@ func ValidateConfig(config ThinkingConfig, modelInfo *registry.ModelInfo, fromFo
 	modelFamilyMismatch := false
 	if modelInfo != nil {
 		modelType := strings.ToLower(strings.TrimSpace(modelInfo.Type))
-		if modelType != "" {
+		if isKnownProviderFamily(modelType) {
 			if (fromFormat != "" && !isSameProviderFamily(fromFormat, modelType)) ||
 				(toFormat != "" && !isSameProviderFamily(toFormat, modelType)) {
 				modelFamilyMismatch = true
@@ -131,6 +131,11 @@ func ValidateConfig(config ThinkingConfig, modelInfo *registry.ModelInfo, fromFo
 
 	if len(support.Levels) > 0 && config.Mode == ModeLevel {
 		if !isLevelSupported(string(config.Level), support.Levels) {
+			// Refuse only a true cross-family entry; the same-wire model-family
+			// clamp (Kimi behind the Claude wire) is a kept conversion.
+			if allowClampUnsupported && RefuseUnsupportedEffort() && !isSameProviderFamily(fromFormat, toFormat) {
+				return nil, refuseEffort(toFormat, modelInfo.ID, strings.ToLower(string(config.Level)), normalizeLevels(support.Levels))
+			}
 			if allowClampUnsupported {
 				config.Level = clampLevel(config.Level, modelInfo, toFormat)
 			}
@@ -167,10 +172,24 @@ func ValidateConfig(config ThinkingConfig, modelInfo *registry.ModelInfo, fromFo
 	}
 
 	if config.Mode == ModeNone && toFormat == "claude" {
-		// Claude supports explicit disable via thinking.type="disabled".
-		// Keep Budget=0 so applier can omit budget_tokens.
-		config.Budget = 0
-		config.Level = ""
+		if !support.ZeroAllowed {
+			if lowest, ok := lowestSupportedLevel(support.Levels); ok {
+				// Adaptive-only Claude models (for example claude-opus-5-5, claude-fable-5,
+				// and claude-fable-5-1) reject thinking.type="disabled". Like other models
+				// that cannot be disabled, fall back to the lowest supported level.
+				config.Mode = ModeLevel
+				config.Budget = 0
+				config.Level = lowest
+			} else {
+				config.Budget = 0
+				config.Level = ""
+			}
+		} else {
+			// Claude supports explicit disable via thinking.type="disabled" (or the
+			// model's DisableType). Keep Budget=0 so applier can omit budget_tokens.
+			config.Budget = 0
+			config.Level = ""
+		}
 	} else {
 		switch config.Mode {
 		case ModeBudget, ModeAuto, ModeNone:
@@ -183,7 +202,9 @@ func ValidateConfig(config ThinkingConfig, modelInfo *registry.ModelInfo, fromFo
 		// their Min/Max range is zero.
 		cannotDisableLevelModel := !support.ZeroAllowed && !isLevelSupported(string(LevelNone), support.Levels)
 		if config.Mode == ModeNone && len(support.Levels) > 0 && (config.Budget > 0 || cannotDisableLevelModel) {
-			config.Level = ThinkingLevel(support.Levels[0])
+			if lowest, ok := lowestSupportedLevel(support.Levels); ok {
+				config.Level = lowest
+			}
 		}
 	}
 
@@ -237,7 +258,27 @@ func convertAutoToMidRange(config ThinkingConfig, support *registry.ThinkingSupp
 }
 
 // standardLevelOrder defines the canonical ordering of thinking levels from lowest to highest.
-var standardLevelOrder = []ThinkingLevel{LevelMinimal, LevelLow, LevelMedium, LevelHigh, LevelXHigh, LevelMax}
+// standardLevelOrder ranks the discrete levels for nearest-level clamping.
+// "ultra" is the Codex tier above "max" (GPT-6 Sol/Astra, GPT-5.6 Sol/Terra),
+// so an unsupported "ultra" clamps down to "max" and never the reverse on a tie.
+var standardLevelOrder = []ThinkingLevel{LevelMinimal, LevelLow, LevelMedium, LevelHigh, LevelXHigh, LevelMax, LevelUltra}
+
+// lowestSupportedLevel returns the lowest canonical effort level in supported,
+// ignoring mode markers such as "none" and "auto".
+func lowestSupportedLevel(supported []string) (ThinkingLevel, bool) {
+	bestIdx := -1
+	for _, s := range supported {
+		if idx := levelIndex(strings.TrimSpace(s)); idx != -1 {
+			if bestIdx == -1 || idx < bestIdx {
+				bestIdx = idx
+			}
+		}
+	}
+	if bestIdx >= 0 {
+		return standardLevelOrder[bestIdx], true
+	}
+	return "", false
+}
 
 // clampLevel clamps the given level to the nearest supported level.
 // On tie, prefers the lower level.
@@ -273,12 +314,15 @@ func clampLevel(level ThinkingLevel, modelInfo *registry.ModelInfo, provider str
 
 	if bestIdx >= 0 {
 		clamped := standardLevelOrder[bestIdx]
+		// The caller asked for a level this model does not offer. Rewriting it
+		// is the right fallback, but it must not be silent at the default log
+		// level: an operator who asked for "max" and got "high" needs to see it.
 		log.WithFields(log.Fields{
 			"provider":       provider,
 			"model":          model,
 			"original_value": string(level),
 			"clamped_to":     string(clamped),
-		}).Debug("thinking: level clamped |")
+		}).Warn("thinking: level clamped (requested level not supported by model) |")
 		return clamped
 	}
 	return level
@@ -384,6 +428,15 @@ func isGeminiFamily(provider string) bool {
 func isOpenAIFamily(provider string) bool {
 	switch provider {
 	case "openai", "openai-response", "codex":
+		return true
+	default:
+		return false
+	}
+}
+
+func isKnownProviderFamily(provider string) bool {
+	switch provider {
+	case "gemini", "antigravity", "claude", "openai", "openai-response", "codex", "kimi", "kimi-ai", "kimi.ai", "kimi.com", "xai", "interactions", "devin":
 		return true
 	default:
 		return false

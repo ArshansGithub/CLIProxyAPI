@@ -1,3 +1,5 @@
+//go:build !locked
+
 package managementasset
 
 import (
@@ -17,10 +19,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/httpfetch"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
-	sdkconfig "github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/githubauth"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/httpfetch"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
+	sdkconfig "github.com/router-for-me/CLIProxyAPI/v8/sdk/config"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/sync/singleflight"
 )
@@ -140,34 +143,7 @@ type releaseResponse struct {
 }
 
 // StaticDir resolves the directory that stores the management control panel asset.
-func StaticDir(configFilePath string) string {
-	if override := strings.TrimSpace(os.Getenv("MANAGEMENT_STATIC_PATH")); override != "" {
-		cleaned := filepath.Clean(override)
-		if strings.EqualFold(filepath.Base(cleaned), managementAssetName) {
-			return filepath.Dir(cleaned)
-		}
-		return cleaned
-	}
-
-	if writable := util.WritablePath(); writable != "" {
-		return filepath.Join(writable, "static")
-	}
-
-	configFilePath = strings.TrimSpace(configFilePath)
-	if configFilePath == "" {
-		return ""
-	}
-
-	base := filepath.Dir(configFilePath)
-	fileInfo, err := os.Stat(configFilePath)
-	if err == nil {
-		if fileInfo.IsDir() {
-			base = configFilePath
-		}
-	}
-
-	return filepath.Join(base, "static")
-}
+func StaticDir(configFilePath string) string { return staticDirFor(configFilePath) }
 
 // FilePath resolves the absolute path to the management control panel asset.
 func FilePath(configFilePath string) string {
@@ -350,7 +326,7 @@ func fetchLatestAsset(ctx context.Context, client *http.Client, releaseURL strin
 		"Accept":     "application/vnd.github+json",
 		"User-Agent": httpUserAgent,
 	}
-	if token := util.ResolveGitHubToken(); token != "" {
+	if token := githubauth.TokenForURL(releaseURL); token != "" {
 		headers["Authorization"] = "Bearer " + token
 	}
 
