@@ -107,14 +107,12 @@ func maskClaudeClientVersionSecret(key string) string {
 // warning. It returns true at most once per (credential, version) pair, and only
 // when the observed version differs from the configured baseline.
 func ObserveClaudeClientVersion(auth *cliproxyauth.Auth, apiKey string, headers http.Header, cfg *config.Config) bool {
-	userAgent := strings.TrimSpace(headerValue(headers, "User-Agent"))
-	if !claudeCodeNativeUserAgentPattern.MatchString(userAgent) {
+	parsed, okUserAgent := parseClaudeCodeUserAgent(headerValue(headers, "User-Agent"))
+	if !okUserAgent {
 		return false
 	}
-	version, okVersion := parseClaudeCLIVersion(userAgent)
-	if !okVersion {
-		return false
-	}
+	// profileUserAgent drops per-request extension fields, so one version is one row.
+	version, userAgent := parsed.version, parsed.profileUserAgent
 	baseline := defaultClaudeDeviceProfile(cfg)
 	if !baseline.hasVersion {
 		return false

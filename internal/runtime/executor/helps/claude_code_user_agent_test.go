@@ -100,7 +100,9 @@ func TestDetectClaudeCodeRequestUserAgentFieldsKeepNativeGuards(t *testing.T) {
 		missingMetadata, allowEntrypoint, wantConfirmed bool
 	}{
 		{name: "old patch", userAgent: "claude-cli/2.1.279 (external, cli, workload/cron)"},
-		{name: "unknown release line", userAgent: "claude-cli/2.2.0 (external, cli, workload/cron)"},
+		// The fork's pin is a floor (fix(claude): treat the pinned Claude Code version as a
+		// floor, not a lock), so 2.2.0 is native here; a version past the major ceiling is not.
+		{name: "past the version ceiling", userAgent: "claude-cli/9.0.0 (external, cli, workload/cron)"},
 		{name: "unknown entrypoint", userAgent: "claude-cli/2.1.312 (external, other-client, workload/cron)"},
 		{name: "missing app", missingHeader: "X-App"},
 		{name: "missing beta", missingHeader: "Anthropic-Beta"},

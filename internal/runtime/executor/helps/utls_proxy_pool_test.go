@@ -105,9 +105,14 @@ func TestUtlsAnthropicTransportPoolsPerCredential(t *testing.T) {
 	plain := func(id string) *http.Transport {
 		t.Helper()
 		client := NewUtlsHTTPClient(context.Background(), cfg, &cliproxyauth.Auth{ID: id}, 0)
-		tr, ok := client.Transport.(*fallbackRoundTripper).anthropicRoundTripper().(*http.Transport)
+		rt := client.Transport.(*fallbackRoundTripper).anthropicRoundTripper()
+		// The locked build wraps the uTLS round tripper in the egress guard.
+		if guarded, okGuarded := rt.(interface{ Unwrap() http.RoundTripper }); okGuarded {
+			rt = guarded.Unwrap()
+		}
+		tr, ok := rt.(*http.Transport)
 		if !ok {
-			t.Fatalf("unpooled anthropic transport = %T, want *http.Transport", client.Transport.(*fallbackRoundTripper).anthropicRoundTripper())
+			t.Fatalf("unpooled anthropic transport = %T, want *http.Transport", rt)
 		}
 		return tr
 	}
