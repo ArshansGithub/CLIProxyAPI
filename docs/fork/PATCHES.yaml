@@ -232,6 +232,7 @@
     - "fix: reconcile carried patches with v8.0.38's equivalents"
     - "fix: reconcile carried patches with v8.0.44's equivalents"
     - "fix: reconcile carried patches with v8.0.54's equivalents"
+    - "fix: reconcile carried patches with v8.0.62's equivalents"
   layer: fix
   upstream_pr: null
   drop: >-
@@ -326,6 +327,24 @@
     4.5 id; a 5.5 helper would have fallen out of the helper exception and into
     the cloaked path. Both ids are accepted; the beta-profile allowlist is
     unchanged until a 2.1.293 helper capture is reviewed.
+
+- subject: "feat(models): register claude-fable-5-2 in the locked catalog"
+  layer: feat
+  upstream_pr: null
+  drop: "upstream ships a claude-fable-5-2 row in internal/registry/models/models.json"
+  note: >-
+    2026-11-09. Claude Code sessions asking for claude-fable-5-2 got "unknown
+    provider" because the locked catalog had no row and the fork refuses
+    on-demand catalog refresh. The row is cloned from claude-fable-5-1; its
+    context, output cap and effort levels were measured against Anthropic
+    through a side instance (MODELS_VERSION records the evidence). The
+    family-keyed behaviour (trailing assistant prefill drop, omitted max_tokens
+    ceiling) and the header-keyed 429 / 7d_oi handling apply to it unchanged.
+    The 5.1-exact cloaking paths (reporting-outcomes block, Opus fallback,
+    display=updates, per-turn-control, preserved-thinking binding) and the 5m
+    keepalive price list are not extended: Claude Code 2.1.319 has no 5.2
+    catalog entry, so a native client sends none of them for 5.2, and the
+    fork's own traffic is native pass-through where those paths do not run.
 
 - subjects:
     - "feat(no-substitution): config block with strip-fallbacks and refuse-unsupported-effort"
